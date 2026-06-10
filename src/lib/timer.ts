@@ -1,113 +1,113 @@
 import { EventEmitter } from "node:events";
 
-export type TimerPhase = "work" | "break" | "long-break" | "countdown";
+export type Phase = "work" | "break" | "long-break" | "countdown";
 
 export interface TimerState {
-  phase: TimerPhase;
-  remaining: number; // seconds
-  total: number; // seconds
+  phase: Phase;
+  remaining: number;
+  total: number;
   pomodoroCount: number;
   paused: boolean;
-  running: boolean;
 }
 
-export interface TimerOptions {
-  pomodoro: boolean;
+export interface TimerConfig {
+  mode: "pomodoro" | "countdown" | "free";
   workMinutes: number;
   breakMinutes: number;
   longBreakMinutes: number;
-  timerMinutes?: number;
+  countdownMinutes?: number;
 }
 
 export class Timer extends EventEmitter {
   private state: TimerState;
   private interval: ReturnType<typeof setInterval> | null = null;
-  private options: TimerOptions;
+  private config: TimerConfig;
 
-  constructor(options: TimerOptions) {
+  constructor(config: TimerConfig) {
     super();
-    this.options = options;
+    this.config = config;
 
-    const initialSeconds = options.pomodoro
-      ? options.workMinutes * 60
-      : options.timerMinutes
-        ? options.timerMinutes * 60
-        : 0;
+    const seconds = this.phaseSeconds(
+      config.mode === "pomodoro" ? "work" : "countdown"
+    );
 
     this.state = {
-      phase: options.pomodoro ? "work" : "countdown",
-      remaining: initialSeconds,
-      total: initialSeconds,
+      phase: config.mode === "pomodoro" ? "work" : "countdown",
+      remaining: seconds,
+      total: seconds,
       pomodoroCount: 0,
       paused: false,
-      running: false,
     };
   }
 
   start() {
-    if (this.state.running) return;
-    this.state.running = true;
-    this.state.paused = false;
-
     this.interval = setInterval(() => {
       if (this.state.paused) return;
-
       if (this.state.remaining > 0) {
         this.state.remaining--;
-        this.emit("tick", this.getState());
+        this.emit("tick", this.snapshot());
       } else {
-        this.onPhaseComplete();
+        this.advance();
       }
     }, 1000);
-
-    this.emit("start", this.getState());
+    this.emit("tick", this.snapshot());
   }
 
-  pause() {
+  togglePause() {
     this.state.paused = !this.state.paused;
-    this.emit(this.state.paused ? "pause" : "resume", this.getState());
+    this.emit(this.state.paused ? "pause" : "resume", this.snapshot());
   }
 
   stop() {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-    this.state.running = false;
-    this.emit("stop", this.getState());
+    if (this.interval) clearInterval(this.interval);
+    this.interval = null;
   }
 
-  getState(): TimerState {
+  snapshot(): TimerState {
     return { ...this.state };
   }
 
-  private onPhaseComplete() {
-    if (!this.options.pomodoro) {
-      this.emit("complete", this.getState());
+  private advance() {
+    if (this.config.mode !== "pomodoro") {
+      this.emit("complete", this.snapshot());
       this.stop();
       return;
     }
 
     if (this.state.phase === "work") {
       this.state.pomodoroCount++;
-      const isLongBreak = this.state.pomodoroCount % 4 === 0;
-      this.state.phase = isLongBreak ? "long-break" : "break";
-      this.state.total = isLongBreak
-        ? this.options.longBreakMinutes * 60
-        : this.options.breakMinutes * 60;
-      this.state.remaining = this.state.total;
-      this.emit("phase-change", this.getState());
+      const next: Phase =
+        this.state.pomodoroCount % 4 === 0 ? "long-break" : "break";
+      this.setPhase(next);
     } else {
-      this.state.phase = "work";
-      this.state.total = this.options.workMinutes * 60;
-      this.state.remaining = this.state.total;
-      this.emit("phase-change", this.getState());
+      this.setPhase("work");
+    }
+    this.emit("phase", this.snapshot());
+  }
+
+  private setPhase(phase: Phase) {
+    const seconds = this.phaseSeconds(phase);
+    this.state.phase = phase;
+    this.state.total = seconds;
+    this.state.remaining = seconds;
+  }
+
+  private phaseSeconds(phase: Phase): number {
+    switch (phase) {
+      case "work":
+        return this.config.workMinutes * 60;
+      case "break":
+        return this.config.breakMinutes * 60;
+      case "long-break":
+        return this.config.longBreakMinutes * 60;
+      case "countdown":
+        return (this.config.countdownMinutes ?? 25) * 60;
     }
   }
 }
 
-export function formatTime(seconds: number): string {
+export function fmt(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
-  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }

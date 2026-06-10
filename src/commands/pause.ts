@@ -1,18 +1,17 @@
 import chalk from "chalk";
-import { loadSession, isSessionActive } from "../lib/session.js";
+import * as session from "../lib/session.js";
 
 export async function pauseSession(): Promise<void> {
-  if (!isSessionActive()) {
+  if (!session.active()) {
     console.log(chalk.dim("No active session."));
     return;
   }
 
-  const session = loadSession();
-  if (!session) return;
+  const s = session.load();
+  if (!s) return;
 
-  // Send SIGUSR1 to toggle pause in the running session
   try {
-    process.kill(session.pid, "SIGUSR1");
+    process.kill(s.pid, "SIGUSR1");
     console.log(chalk.yellow("  Toggled pause."));
   } catch {
     console.log(chalk.red("  Could not reach session process."));

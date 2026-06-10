@@ -1,48 +1,65 @@
 export interface Channel {
+  id: string;
   name: string;
   description: string;
-  url: string;
+  icon: string;
+  youtubeIds: string[];
 }
 
-// YouTube live streams and long-running lofi/focus music
-// These are stable, long-running streams that work well for background focus
-export const channels: Record<string, Channel> = {
-  deepfocus: {
-    name: "Deep Focus",
-    description: "Ambient electronic for deep work",
-    url: "https://www.youtube.com/watch?v=jfKfPfyJRdk", // lofi girl
+// Synced with devflow.fm — same channels, same IDs
+export const channels: Channel[] = [
+  {
+    id: "lofi",
+    name: "lo-fi",
+    description: "chill beats to code to",
+    icon: "~",
+    youtubeIds: ["jfKfPfyJRdk", "rUxyKA_-grg"],
   },
-  synthwave: {
-    name: "Synthwave",
-    description: "Retro-futuristic synth vibes",
-    url: "https://www.youtube.com/watch?v=4xDzrJKXOOY", // synthwave radio
+  {
+    id: "synthwave",
+    name: "synthwave",
+    description: "retro-futuristic focus",
+    icon: ">",
+    youtubeIds: ["4xDzrJKXOOY", "MVPTGNGiI-4"],
   },
-  jazz: {
-    name: "Jazz",
-    description: "Smooth jazz for calm sessions",
-    url: "https://www.youtube.com/watch?v=HuFYqnbVbzY", // coffee shop jazz
+  {
+    id: "ambient",
+    name: "ambient",
+    description: "deep focus atmospheric",
+    icon: "·",
+    youtubeIds: ["S_MOd40zlYU", "7NOSDKb0HlU"],
   },
-  classical: {
-    name: "Classical",
-    description: "Classical music for focused thinking",
-    url: "https://www.youtube.com/watch?v=jgpJVI3tDbY", // classical radio
+  {
+    id: "jazz",
+    name: "jazz-hop",
+    description: "smooth jazz & hip-hop fusion",
+    icon: "♪",
+    youtubeIds: ["Dx5qFachd3A", "kgx4WGK0oNU", "fEvM-OUbaKs"],
   },
-  ambient: {
-    name: "Ambient",
-    description: "Atmospheric soundscapes",
-    url: "https://www.youtube.com/watch?v=S_MOd40zlYU", // ambient music
+  {
+    id: "deepfocus",
+    name: "deep-focus",
+    description: "minimal techno for flow state",
+    icon: "◉",
+    youtubeIds: ["hiWGj7j6pxE", "bkxLApqUSbo", "GxV0TggxqC8", "q3_yvs_T4Cc"],
   },
-  silence: {
-    name: "Silence",
-    description: "Timer only, no music",
-    url: "",
+  {
+    id: "classical",
+    name: "classical",
+    description: "timeless compositions",
+    icon: "♫",
+    youtubeIds: ["jgpJVI3tDbY", "mIYzp5rcTvU"],
   },
-};
+];
 
-export function getChannel(name: string): Channel | undefined {
-  return channels[name.toLowerCase()];
+export function findChannel(query: string): Channel | undefined {
+  const q = query.toLowerCase();
+  return channels.find((c) => c.id === q || c.name === q);
 }
 
-export function listChannels(): Channel[] {
-  return Object.values(channels);
+export function channelList(): string {
+  const maxId = Math.max(...channels.map((c) => c.id.length));
+  return channels
+    .map((c) => `  ${c.icon} ${c.id.padEnd(maxId + 1)} ${c.description}`)
+    .join("\n");
 }

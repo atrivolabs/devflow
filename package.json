@@ -1,16 +1,17 @@
 {
   "name": "devflow",
   "version": "0.1.0",
-  "description": "CLI focus companion for developers — music, pomodoro, and session flow",
+  "description": "Focus companion for developers — music, pomodoro, and session flow",
   "type": "module",
   "bin": {
     "devflow": "./dist/cli.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsup src/cli.ts --format esm --dts",
+    "build": "tsup src/cli.ts --format esm --clean",
     "dev": "tsx src/cli.ts",
-    "start": "node dist/cli.js",
-    "lint": "eslint src/",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
@@ -23,23 +24,25 @@
     "productivity",
     "terminal",
     "coding",
-    "timer"
+    "timer",
+    "devflow"
   ],
   "author": "Atrivo Labs",
   "license": "MIT",
+  "homepage": "https://devflow.fm",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atrivolabs/devflow.git"
+  },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "chalk": "^5.4.1",
-    "commander": "^13.1.0",
-    "ink": "^5.1.0",
-    "ink-spinner": "^5.0.0",
-    "react": "^18.3.1"
+    "commander": "^13.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
-    "@types/react": "^18.3.18",
     "tsup": "^8.4.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"

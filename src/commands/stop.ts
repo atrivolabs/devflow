@@ -1,21 +1,19 @@
 import chalk from "chalk";
-import { loadSession, isSessionActive, clearSession } from "../lib/session.js";
+import * as session from "../lib/session.js";
 
 export async function stopSession(): Promise<void> {
-  if (!isSessionActive()) {
+  if (!session.active()) {
     console.log(chalk.dim("No active session."));
     return;
   }
 
-  const session = loadSession();
-  if (!session) return;
+  const s = session.load();
+  if (!s) return;
 
   try {
-    process.kill(session.pid, "SIGTERM");
-    clearSession();
-    console.log(chalk.green("  Session stopped."));
-  } catch {
-    clearSession();
-    console.log(chalk.dim("  Session cleaned up."));
-  }
+    process.kill(s.pid, "SIGTERM");
+  } catch {}
+
+  session.clear();
+  console.log(chalk.green("  Session stopped."));
 }

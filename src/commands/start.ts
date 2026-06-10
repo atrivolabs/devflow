@@ -1,8 +1,10 @@
 import chalk from "chalk";
-import { Timer, formatTime, type TimerState } from "../lib/timer.js";
-import { play, stop as stopPlayer } from "../lib/player.js";
-import { getChannel, listChannels } from "../lib/channels.js";
-import { saveSession, clearSession, isSessionActive } from "../lib/session.js";
+import { Timer, fmt, type TimerState } from "../lib/timer.js";
+import { play, stop as stopMusic, checkDeps } from "../lib/player.js";
+import { findChannel, channelList } from "../lib/channels.js";
+import * as session from "../lib/session.js";
+import * as ui from "../lib/display.js";
+import { startHeartbeat, stopHeartbeat } from "../lib/listener.js";
 
 interface StartOptions {
   channel: string;
@@ -15,158 +17,151 @@ interface StartOptions {
 }
 
 export async function startSession(options: StartOptions): Promise<void> {
-  if (isSessionActive()) {
-    console.log(chalk.yellow("A session is already running. Use 'devflow stop' first."));
+  if (session.active()) {
+    console.log(
+      chalk.yellow("A session is already running. Use `devflow stop` first.")
+    );
     return;
   }
 
-  const channel = getChannel(options.channel);
+  const channel = findChannel(options.channel);
   if (!channel) {
-    console.log(chalk.red(`Unknown channel: ${options.channel}`));
-    console.log(chalk.dim("Available channels:"));
-    for (const ch of listChannels()) {
-      console.log(chalk.dim(`  ${ch.name.toLowerCase().padEnd(12)} ${ch.description}`));
-    }
+    console.log(chalk.red(`Unknown channel: ${options.channel}\n`));
+    console.log(chalk.dim("Available channels:\n" + channelList()));
     return;
   }
 
-  const workMinutes = parseInt(options.work, 10);
-  const breakMinutes = parseInt(options.break, 10);
-  const longBreakMinutes = parseInt(options.longBreak, 10);
-  const timerMinutes = options.timer ? parseInt(options.timer, 10) : undefined;
-  const isPomodoro = options.pomodoro ?? false;
+  const work = parseInt(options.work, 10);
+  const brk = parseInt(options.break, 10);
+  const longBrk = parseInt(options.longBreak, 10);
+  const countdown = options.timer ? parseInt(options.timer, 10) : undefined;
+  const pomodoro = options.pomodoro ?? false;
   const withMusic = options.music !== false;
+  const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
 
-  // Header
-  console.log();
-  console.log(chalk.bold("  devflow"));
-  console.log(chalk.dim("  ─────────────────────────────"));
-
-  if (isPomodoro) {
-    console.log(chalk.green(`  Mode:    Pomodoro (${workMinutes}/${breakMinutes}/${longBreakMinutes})`));
-  } else if (timerMinutes) {
-    console.log(chalk.green(`  Mode:    Timer (${timerMinutes}min)`));
+  // Show header
+  const headerLines: string[] = [];
+  if (pomodoro) {
+    headerLines.push(chalk.green(`Mode:    Pomodoro (${work}/${brk}/${longBrk})`));
+  } else if (countdown) {
+    headerLines.push(chalk.green(`Mode:    Timer (${countdown}min)`));
   } else {
-    console.log(chalk.green("  Mode:    Free flow (no timer)"));
+    headerLines.push(chalk.green("Mode:    Free flow"));
   }
-
   if (withMusic) {
-    console.log(chalk.cyan(`  Channel: ${channel.name}`));
-    console.log(chalk.dim(`  ${channel.description}`));
+    headerLines.push(chalk.cyan(`Channel: ${channel.name}`));
+    headerLines.push(chalk.dim(channel.description));
   }
+  ui.header(headerLines);
 
-  console.log(chalk.dim("  ─────────────────────────────"));
-  console.log();
-
-  // Save session info
-  saveSession({
+  // Persist session
+  session.save({
     pid: process.pid,
-    channel: options.channel,
-    pomodoro: isPomodoro,
+    channel: channel.id,
+    mode,
     startedAt: new Date().toISOString(),
-    workMinutes,
-    breakMinutes,
-    longBreakMinutes,
-    timerMinutes,
+    workMinutes: work,
+    breakMinutes: brk,
+    longBreakMinutes: longBrk,
+    countdownMinutes: countdown,
   });
 
   // Start music
-  if (withMusic && channel.url) {
-    console.log(chalk.dim("  Loading stream..."));
-    await play(options.channel);
-    console.log(chalk.green("  ♪ Playing"));
-    console.log();
+  let musicOk = false;
+  if (withMusic) {
+    const deps = await checkDeps();
+    if (!deps.mpv) {
+      console.log(
+        chalk.yellow(
+          "  mpv not found — music disabled.\n" +
+            "  Install: brew install mpv (macOS) / sudo apt install mpv (Linux)\n"
+        )
+      );
+    } else if (!deps.ytdlp) {
+      console.log(
+        chalk.yellow(
+          "  yt-dlp not found — music disabled.\n" +
+            "  Install: brew install yt-dlp (macOS) / pip install yt-dlp\n"
+        )
+      );
+    } else {
+      console.log(chalk.dim("  Loading stream..."));
+      musicOk = await play(channel);
+      if (musicOk) {
+        // Clear "Loading stream..." and show playing
+        process.stdout.write("\r\x1b[K");
+        console.log(chalk.green(`  ${channel.icon} Playing ${channel.name}`));
+        startHeartbeat(channel.id);
+      } else {
+        console.log(chalk.yellow("  Stream unavailable. Continuing without music."));
+      }
+    }
   }
 
-  // Start timer if needed
-  if (isPomodoro || timerMinutes) {
+  console.log();
+
+  // Cleanup handler — single source of truth
+  let cleaned = false;
+  const cleanup = (timer?: Timer) => {
+    if (cleaned) return;
+    cleaned = true;
+    timer?.stop();
+    stopMusic();
+    stopHeartbeat();
+    session.clear();
+    console.log(chalk.dim("\n  Session ended."));
+    process.exit(0);
+  };
+
+  // Timer modes
+  if (mode !== "free") {
     const timer = new Timer({
-      pomodoro: isPomodoro,
-      workMinutes,
-      breakMinutes,
-      longBreakMinutes,
-      timerMinutes,
+      mode,
+      workMinutes: work,
+      breakMinutes: brk,
+      longBreakMinutes: longBrk,
+      countdownMinutes: countdown,
     });
 
-    timer.on("tick", (state: TimerState) => {
-      const phaseLabel = getPhaseLabel(state.phase);
-      const bar = progressBar(state.remaining, state.total, 20);
-      const timeStr = formatTime(state.remaining);
-      const pomCount = state.pomodoroCount > 0 ? ` #${state.pomodoroCount}` : "";
-      process.stdout.write(
-        `\r  ${phaseLabel} ${bar} ${chalk.bold(timeStr)}${chalk.dim(pomCount)}  `
-      );
-    });
+    timer.on("tick", (state: TimerState) => ui.tickLine(state, fmt(state.remaining)));
 
-    timer.on("phase-change", (state: TimerState) => {
+    timer.on("phase", (state: TimerState) => {
       console.log();
-      const phaseLabel = getPhaseLabel(state.phase);
       if (state.phase === "work") {
-        console.log(chalk.green(`\n  ▶ Back to work! (${formatTime(state.total)})`));
+        console.log(chalk.green(`\n  ▶ Back to work! (${fmt(state.total)})`));
       } else {
-        console.log(chalk.yellow(`\n  ☕ ${phaseLabel}! (${formatTime(state.total)})`));
+        console.log(
+          chalk.yellow(
+            `\n  ☕ ${ui.phaseLabel(state.phase)}! (${fmt(state.total)})`
+          )
+        );
       }
-      // Ring bell
-      process.stdout.write("\x07");
+      ui.bell();
     });
 
     timer.on("complete", () => {
-      console.log();
-      console.log(chalk.green("\n  ✓ Session complete!"));
-      process.stdout.write("\x07");
-      cleanup();
+      console.log(chalk.green("\n\n  ✓ Session complete!"));
+      ui.bell();
+      cleanup(timer);
+    });
+
+    // Handle SIGUSR1 for pause toggle from `devflow pause`
+    process.on("SIGUSR1", () => {
+      timer.togglePause();
+      const s = timer.snapshot();
+      if (s.paused) {
+        console.log(chalk.yellow("\n  ⏸  Paused"));
+      } else {
+        console.log(chalk.green("\n  ▶  Resumed"));
+      }
     });
 
     timer.start();
-
-    // Handle graceful shutdown
-    const cleanup = () => {
-      timer.stop();
-      stopPlayer();
-      clearSession();
-      console.log();
-      console.log(chalk.dim("  Session ended."));
-      process.exit(0);
-    };
-
-    process.on("SIGINT", cleanup);
-    process.on("SIGTERM", cleanup);
+    process.on("SIGINT", () => cleanup(timer));
+    process.on("SIGTERM", () => cleanup(timer));
   } else {
-    // Free flow mode — just music, ctrl+c to stop
     console.log(chalk.dim("  Press Ctrl+C to stop"));
-
-    const cleanup = () => {
-      stopPlayer();
-      clearSession();
-      console.log();
-      console.log(chalk.dim("  Session ended."));
-      process.exit(0);
-    };
-
-    process.on("SIGINT", cleanup);
-    process.on("SIGTERM", cleanup);
+    process.on("SIGINT", () => cleanup());
+    process.on("SIGTERM", () => cleanup());
   }
-}
-
-function getPhaseLabel(phase: string): string {
-  switch (phase) {
-    case "work":
-      return chalk.green("FOCUS");
-    case "break":
-      return chalk.yellow("BREAK");
-    case "long-break":
-      return chalk.magenta("LONG BREAK");
-    case "countdown":
-      return chalk.cyan("TIMER");
-    default:
-      return phase;
-  }
-}
-
-function progressBar(remaining: number, total: number, width: number): string {
-  if (total === 0) return "";
-  const elapsed = total - remaining;
-  const filled = Math.round((elapsed / total) * width);
-  const empty = width - filled;
-  return chalk.dim("[") + chalk.green("█".repeat(filled)) + chalk.dim("░".repeat(empty)) + chalk.dim("]");
 }

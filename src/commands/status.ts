@@ -1,27 +1,32 @@
 import chalk from "chalk";
-import { loadSession, isSessionActive } from "../lib/session.js";
+import * as session from "../lib/session.js";
+import { findChannel } from "../lib/channels.js";
+import { fmt } from "../lib/timer.js";
+import * as ui from "../lib/display.js";
 
 export async function showStatus(): Promise<void> {
-  if (!isSessionActive()) {
+  if (!session.active()) {
     console.log(chalk.dim("No active session. Start one with: devflow start"));
     return;
   }
 
-  const session = loadSession();
-  if (!session) return;
+  const s = session.load();
+  if (!s) return;
 
-  const started = new Date(session.startedAt);
-  const elapsed = Math.floor((Date.now() - started.getTime()) / 1000);
-  const minutes = Math.floor(elapsed / 60);
-  const seconds = elapsed % 60;
+  const elapsed = Math.floor((Date.now() - new Date(s.startedAt).getTime()) / 1000);
+  const channel = findChannel(s.channel);
 
-  console.log();
-  console.log(chalk.bold("  devflow session"));
-  console.log(chalk.dim("  ─────────────────────────────"));
-  console.log(`  Channel:  ${chalk.cyan(session.channel)}`);
-  console.log(`  Mode:     ${session.pomodoro ? chalk.green("Pomodoro") : session.timerMinutes ? chalk.cyan(`Timer (${session.timerMinutes}min)`) : chalk.dim("Free flow")}`);
-  console.log(`  Elapsed:  ${chalk.bold(`${minutes}m ${seconds}s`)}`);
-  console.log(`  PID:      ${chalk.dim(session.pid.toString())}`);
-  console.log(chalk.dim("  ─────────────────────────────"));
-  console.log();
+  const modeLabel =
+    s.mode === "pomodoro"
+      ? chalk.green(`Pomodoro (${s.workMinutes}/${s.breakMinutes}/${s.longBreakMinutes})`)
+      : s.mode === "countdown"
+        ? chalk.cyan(`Timer (${s.countdownMinutes}min)`)
+        : chalk.dim("Free flow");
+
+  ui.header([
+    `Channel:  ${chalk.cyan(channel?.name ?? s.channel)}`,
+    `Mode:     ${modeLabel}`,
+    `Elapsed:  ${chalk.bold(fmt(elapsed))}`,
+    `PID:      ${chalk.dim(String(s.pid))}`,
+  ]);
 }

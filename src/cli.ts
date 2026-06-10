@@ -5,6 +5,7 @@ import { startSession } from "./commands/start.js";
 import { showStatus } from "./commands/status.js";
 import { pauseSession } from "./commands/pause.js";
 import { stopSession } from "./commands/stop.js";
+import { listChannelsCmd } from "./commands/channels.js";
 
 const program = new Command();
 
@@ -16,28 +17,33 @@ program
 program
   .command("start")
   .description("Start a focus session")
-  .option("-c, --channel <channel>", "Music channel", "deepfocus")
-  .option("-t, --timer <minutes>", "Session timer in minutes")
-  .option("-p, --pomodoro", "Use pomodoro mode (25min work / 5min break)")
-  .option("--work <minutes>", "Pomodoro work duration", "25")
-  .option("--break <minutes>", "Pomodoro break duration", "5")
-  .option("--long-break <minutes>", "Pomodoro long break duration (every 4th)", "15")
+  .option("-c, --channel <channel>", "Music channel (default: lofi)", "lofi")
+  .option("-t, --timer <minutes>", "Countdown timer in minutes")
+  .option("-p, --pomodoro", "Pomodoro mode (25/5/15)")
+  .option("--work <minutes>", "Work block duration", "25")
+  .option("--break <minutes>", "Short break duration", "5")
+  .option("--long-break <minutes>", "Long break duration (every 4th)", "15")
   .option("--no-music", "Timer only, no music")
   .action(startSession);
-
-program
-  .command("status")
-  .description("Show current session status")
-  .action(showStatus);
-
-program
-  .command("pause")
-  .description("Pause/resume the current session")
-  .action(pauseSession);
 
 program
   .command("stop")
   .description("Stop the current session")
   .action(stopSession);
+
+program
+  .command("pause")
+  .description("Toggle pause on the current session")
+  .action(pauseSession);
+
+program
+  .command("status")
+  .description("Show current session info")
+  .action(showStatus);
+
+program
+  .command("channels")
+  .description("List available music channels")
+  .action(listChannelsCmd);
 
 program.parse();

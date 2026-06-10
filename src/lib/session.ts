@@ -1,54 +1,61 @@
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
+import {
+  writeFileSync,
+  readFileSync,
+  unlinkSync,
+  existsSync,
+  mkdirSync,
+} from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-const SESSION_DIR = join(homedir(), ".devflow");
-const SESSION_FILE = join(SESSION_DIR, "session.json");
+export const DEVFLOW_DIR = join(homedir(), ".devflow");
+const SESSION_FILE = join(DEVFLOW_DIR, "session.json");
 
 export interface SessionData {
   pid: number;
   channel: string;
-  pomodoro: boolean;
+  mode: "pomodoro" | "countdown" | "free";
   startedAt: string;
   workMinutes: number;
   breakMinutes: number;
   longBreakMinutes: number;
-  timerMinutes?: number;
+  countdownMinutes?: number;
 }
 
-export function saveSession(data: SessionData): void {
-  if (!existsSync(SESSION_DIR)) {
-    mkdirSync(SESSION_DIR, { recursive: true });
-  }
+function ensureDir() {
+  if (!existsSync(DEVFLOW_DIR)) mkdirSync(DEVFLOW_DIR, { recursive: true });
+}
+
+export function save(data: SessionData): void {
+  ensureDir();
   writeFileSync(SESSION_FILE, JSON.stringify(data, null, 2));
 }
 
-export function loadSession(): SessionData | null {
+export function load(): SessionData | null {
   if (!existsSync(SESSION_FILE)) return null;
   try {
     const raw = readFileSync(SESSION_FILE, "utf-8");
-    return JSON.parse(raw) as SessionData;
+    if (!raw.trim()) return null;
+    return JSON.parse(raw);
   } catch {
     return null;
   }
 }
 
-export function clearSession(): void {
-  if (existsSync(SESSION_FILE)) {
-    writeFileSync(SESSION_FILE, "");
-  }
+export function clear(): void {
+  try {
+    if (existsSync(SESSION_FILE)) unlinkSync(SESSION_FILE);
+  } catch {}
 }
 
-export function isSessionActive(): boolean {
-  const session = loadSession();
-  if (!session) return false;
-
-  // Check if the process is still running
+export function active(): boolean {
+  const s = load();
+  if (!s) return false;
   try {
-    process.kill(session.pid, 0);
+    process.kill(s.pid, 0);
     return true;
   } catch {
-    clearSession();
+    clear();
     return false;
   }
 }
