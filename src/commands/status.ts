@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import * as session from "../lib/session.js";
-import { findChannel } from "../lib/channels.js";
+import { channels, findChannel } from "../lib/channels.js";
 import { fmt } from "../lib/timer.js";
 import * as ui from "../lib/display.js";
 
@@ -14,7 +14,7 @@ export async function showStatus(): Promise<void> {
   if (!s) return;
 
   const elapsed = Math.floor((Date.now() - new Date(s.startedAt).getTime()) / 1000);
-  const channel = findChannel(s.channel);
+  const channel = findChannel(channels, s.channel);
 
   const modeLabel =
     s.mode === "pomodoro"

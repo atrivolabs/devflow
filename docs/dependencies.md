@@ -107,7 +107,25 @@ resolves its bundled FFmpeg/libass correctly.
 
 ## Music source
 
-Channels currently point at public YouTube video/stream IDs
-(`src/lib/channels.ts`), kept in sync with devflow.fm. This couples playback to
-yt-dlp keeping pace with YouTube's changes. Moving to a self-owned source is
-tracked as future work — see the repo issues.
+### Channel list
+
+The channel list has a single source of truth: the web app's
+`https://www.devflow.fm/api/channels` endpoint. The CLI resolves channels at
+startup via `src/lib/channel-source.ts`, in this order of preference:
+
+1. **Fresh on-disk cache** (`~/.devflow/channels.json`, < 6h old) — instant, no network.
+2. **Live fetch** from the endpoint (3s timeout) — refreshes the cache.
+3. **Stale cache** — when the network is unavailable.
+4. **Bundled list** in `src/lib/channels.ts` — last-resort fallback shipped with the release.
+
+So a dead/changed stream is fixed in one place (today: the web repo's
+`channels.ts`; later: a datastore behind the same endpoint) and reaches CLI
+users within ~6h without a release. Override the endpoint for testing with
+`DEVFLOW_CHANNELS_URL`. Keep the bundled fallback roughly current so first-run
+offline installs still work.
+
+### YouTube coupling
+
+Channels point at public YouTube video/stream IDs, so playback depends on
+yt-dlp keeping pace with YouTube's changes, and on those streams staying live.
+Moving to a self-owned source is tracked as future work — see the repo issues.

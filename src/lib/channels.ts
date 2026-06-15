@@ -6,7 +6,9 @@ export interface Channel {
   youtubeIds: string[];
 }
 
-// Synced with devflow.fm — same channels, same IDs
+// Bundled fallback list. The live source of truth is the web app's
+// /api/channels endpoint (see channel-source.ts); this is used only when that
+// can't be reached. Keep it roughly in sync with devflow.fm.
 export const channels: Channel[] = [
   {
     id: "lofi",
@@ -52,14 +54,14 @@ export const channels: Channel[] = [
   },
 ];
 
-export function findChannel(query: string): Channel | undefined {
+export function findChannel(list: Channel[], query: string): Channel | undefined {
   const q = query.toLowerCase();
-  return channels.find((c) => c.id === q || c.name === q);
+  return list.find((c) => c.id === q || c.name === q);
 }
 
-export function channelList(): string {
-  const maxId = Math.max(...channels.map((c) => c.id.length));
-  return channels
+export function channelList(list: Channel[]): string {
+  const maxId = Math.max(...list.map((c) => c.id.length));
+  return list
     .map((c) => `  ${c.icon} ${c.id.padEnd(maxId + 1)} ${c.description}`)
     .join("\n");
 }

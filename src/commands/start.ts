@@ -3,6 +3,7 @@ import { Timer, fmt, type TimerState } from "../lib/timer.js";
 import { play, stop as stopMusic, checkDeps } from "../lib/player.js";
 import { installHint } from "../lib/deps.js";
 import { findChannel, channelList } from "../lib/channels.js";
+import { loadChannels } from "../lib/channel-source.js";
 import * as session from "../lib/session.js";
 import * as ui from "../lib/display.js";
 import { startHeartbeat, stopHeartbeat } from "../lib/listener.js";
@@ -26,10 +27,11 @@ export async function startSession(options: StartOptions): Promise<void> {
     return;
   }
 
-  const channel = findChannel(options.channel);
+  const allChannels = await loadChannels();
+  const channel = findChannel(allChannels, options.channel);
   if (!channel) {
     console.log(chalk.red(`Unknown channel: ${options.channel}\n`));
-    console.log(chalk.dim("Available channels:\n" + channelList()));
+    console.log(chalk.dim("Available channels:\n" + channelList(allChannels)));
     return;
   }
 
