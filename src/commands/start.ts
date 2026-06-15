@@ -169,7 +169,11 @@ export async function startSession(options: StartOptions): Promise<void> {
       unitSeconds,
     });
 
-    timer.on("tick", (state: TimerState) => ui.tickLine(state, fmt(state.remaining)));
+    // While counting, show time remaining; once a phase completes, show its
+    // total duration so the finished line reads as a log of how long it was.
+    timer.on("tick", (state: TimerState) =>
+      ui.tickLine(state, fmt(state.remaining > 0 ? state.remaining : state.total))
+    );
 
     // Proactive heads-up before a transition. Audible only — no printed line,
     // which would interrupt the live countdown (it redraws in place with \r).
