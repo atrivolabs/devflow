@@ -20,6 +20,7 @@ program
   .option("-c, --channel <channel>", "Music channel (default: lofi)", "lofi")
   .option("-t, --timer <minutes>", "Countdown timer in minutes")
   .option("-p, --pomodoro", "Pomodoro mode (25/5/15)")
+  .option("-r, --rounds <n>", "Stop after N pomodoro work blocks (default: run forever)")
   .option("--work <minutes>", "Work block duration", "25")
   .option("--break <minutes>", "Short break duration", "5")
   .option("--long-break <minutes>", "Long break duration (every 4th)", "15")

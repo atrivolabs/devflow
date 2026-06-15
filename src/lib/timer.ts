@@ -16,6 +16,8 @@ export interface TimerConfig {
   breakMinutes: number;
   longBreakMinutes: number;
   countdownMinutes?: number;
+  /** Stop after this many work blocks (pomodoro mode). Undefined = run forever. */
+  rounds?: number;
 }
 
 export class Timer extends EventEmitter {
@@ -76,6 +78,12 @@ export class Timer extends EventEmitter {
 
     if (this.state.phase === "work") {
       this.state.pomodoroCount++;
+      // Stop once the requested number of work blocks is done — no trailing break.
+      if (this.config.rounds && this.state.pomodoroCount >= this.config.rounds) {
+        this.emit("complete", this.snapshot());
+        this.stop();
+        return;
+      }
       const next: Phase =
         this.state.pomodoroCount % 4 === 0 ? "long-break" : "break";
       this.setPhase(next);

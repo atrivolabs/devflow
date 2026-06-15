@@ -11,6 +11,7 @@ interface StartOptions {
   channel: string;
   timer?: string;
   pomodoro?: boolean;
+  rounds?: string;
   work: string;
   break: string;
   longBreak: string;
@@ -36,6 +37,7 @@ export async function startSession(options: StartOptions): Promise<void> {
   const brk = parseInt(options.break, 10);
   const longBrk = parseInt(options.longBreak, 10);
   const countdown = options.timer ? parseInt(options.timer, 10) : undefined;
+  const rounds = options.rounds ? parseInt(options.rounds, 10) : undefined;
   const pomodoro = options.pomodoro ?? false;
   const withMusic = options.music !== false;
   const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
@@ -43,7 +45,10 @@ export async function startSession(options: StartOptions): Promise<void> {
   // Show header
   const headerLines: string[] = [];
   if (pomodoro) {
-    headerLines.push(chalk.green(`Mode:    Pomodoro (${work}/${brk}/${longBrk})`));
+    const roundsLabel = rounds ? ` · ${rounds} rounds` : "";
+    headerLines.push(
+      chalk.green(`Mode:    Pomodoro (${work}/${brk}/${longBrk})${roundsLabel}`)
+    );
   } else if (countdown) {
     headerLines.push(chalk.green(`Mode:    Timer (${countdown}min)`));
   } else {
@@ -121,6 +126,7 @@ export async function startSession(options: StartOptions): Promise<void> {
       breakMinutes: brk,
       longBreakMinutes: longBrk,
       countdownMinutes: countdown,
+      rounds,
     });
 
     timer.on("tick", (state: TimerState) => ui.tickLine(state, fmt(state.remaining)));
