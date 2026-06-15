@@ -1,12 +1,6 @@
-import {
-  writeFileSync,
-  readFileSync,
-  existsSync,
-  mkdirSync,
-  statSync,
-} from "node:fs";
+import { writeFileSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { DEVFLOW_DIR } from "./session.js";
+import { DEVFLOW_DIR, ensureDir } from "./paths.js";
 import { channels as bundledChannels, type Channel } from "./channels.js";
 
 // Single source of truth lives on the web app; the CLI fetches it and keeps a
@@ -53,7 +47,7 @@ function readCache(): { channels: Channel[]; ageMs: number } | null {
 
 function writeCache(payload: ChannelsPayload): void {
   try {
-    if (!existsSync(DEVFLOW_DIR)) mkdirSync(DEVFLOW_DIR, { recursive: true });
+    ensureDir();
     writeFileSync(CACHE_FILE, JSON.stringify(payload, null, 2));
   } catch {
     // Best-effort cache — a write failure shouldn't break playback.

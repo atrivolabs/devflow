@@ -113,7 +113,7 @@ The channel list has a single source of truth: the web app's
 `https://www.devflow.fm/api/channels` endpoint. The CLI resolves channels at
 startup via `src/lib/channel-source.ts`, in this order of preference:
 
-1. **Fresh on-disk cache** (`~/.devflow/channels.json`, < 6h old) — instant, no network.
+1. **Fresh on-disk cache** (`~/.config/devflow/channels.json`, < 6h old) — instant, no network.
 2. **Live fetch** from the endpoint (3s timeout) — refreshes the cache.
 3. **Stale cache** — when the network is unavailable.
 4. **Bundled list** in `src/lib/channels.ts` — last-resort fallback shipped with the release.

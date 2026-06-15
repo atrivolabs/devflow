@@ -1,6 +1,6 @@
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { DEVFLOW_DIR } from "./session.js";
+import { DEVFLOW_DIR, ensureDir } from "./paths.js";
 
 export interface Config {
   channel: string;
@@ -44,7 +44,7 @@ export function loadConfig(): Config {
 }
 
 export function saveConfig(cfg: Config): void {
-  if (!existsSync(DEVFLOW_DIR)) mkdirSync(DEVFLOW_DIR, { recursive: true });
+  ensureDir();
   writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
 }
 

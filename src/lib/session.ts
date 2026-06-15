@@ -1,14 +1,7 @@
-import {
-  writeFileSync,
-  readFileSync,
-  unlinkSync,
-  existsSync,
-  mkdirSync,
-} from "node:fs";
+import { writeFileSync, readFileSync, unlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { DEVFLOW_DIR, ensureDir } from "./paths.js";
 
-export const DEVFLOW_DIR = join(homedir(), ".devflow");
 const SESSION_FILE = join(DEVFLOW_DIR, "session.json");
 
 export interface SessionData {
@@ -20,10 +13,6 @@ export interface SessionData {
   breakMinutes: number;
   longBreakMinutes: number;
   countdownMinutes?: number;
-}
-
-function ensureDir() {
-  if (!existsSync(DEVFLOW_DIR)) mkdirSync(DEVFLOW_DIR, { recursive: true });
 }
 
 export function save(data: SessionData): void {
