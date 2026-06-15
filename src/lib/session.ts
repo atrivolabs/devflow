@@ -13,6 +13,7 @@ export interface SessionData {
   breakMinutes: number;
   longBreakMinutes: number;
   countdownMinutes?: number;
+  rounds?: number; // pomodoro work blocks before stopping; undefined = unlimited
 }
 
 export function save(data: SessionData): void {

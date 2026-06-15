@@ -16,9 +16,13 @@ export async function showStatus(): Promise<void> {
   const elapsed = Math.floor((Date.now() - new Date(s.startedAt).getTime()) / 1000);
   const channel = findChannel(channels, s.channel);
 
+  const roundsLabel = chalk.dim(
+    ` · ${s.rounds ? `${s.rounds} rounds` : "unlimited rounds"}`
+  );
   const modeLabel =
     s.mode === "pomodoro"
-      ? chalk.green(`Pomodoro (${s.workMinutes}/${s.breakMinutes}/${s.longBreakMinutes})`)
+      ? chalk.green(`Pomodoro (${s.workMinutes}/${s.breakMinutes}/${s.longBreakMinutes})`) +
+        roundsLabel
       : s.mode === "countdown"
         ? chalk.cyan(`Timer (${s.countdownMinutes}min)`)
         : chalk.dim("Free flow");

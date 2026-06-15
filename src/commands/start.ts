@@ -116,6 +116,7 @@ export async function startSession(options: StartOptions): Promise<void> {
     breakMinutes: brk,
     longBreakMinutes: longBrk,
     countdownMinutes: countdown,
+    rounds,
   });
 
   // Start music
