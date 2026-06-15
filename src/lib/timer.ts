@@ -18,6 +18,11 @@ export interface TimerConfig {
   countdownMinutes?: number;
   /** Stop after this many work blocks (pomodoro mode). Undefined = run forever. */
   rounds?: number;
+  /** A long break replaces the short break every N work blocks. Defaults to 4. */
+  longBreakEvery?: number;
+  /** Emit a `warning` event this many seconds before a phase ends (for phases
+   *  at least twice this long). 0 or undefined disables it. */
+  warnLeadSeconds?: number;
   /** Seconds per duration unit. Defaults to 60 (durations are minutes); demo
    *  mode sets it to 1 so the same numbers mean seconds. */
   unitSeconds?: number;
@@ -51,6 +56,10 @@ export class Timer extends EventEmitter {
       if (this.state.remaining > 0) {
         this.state.remaining--;
         this.emit("tick", this.snapshot());
+        const lead = this.config.warnLeadSeconds ?? 0;
+        if (lead > 0 && this.state.remaining === lead && this.state.total >= 2 * lead) {
+          this.emit("warning", this.snapshot());
+        }
       } else {
         this.advance();
       }
@@ -87,8 +96,12 @@ export class Timer extends EventEmitter {
         this.stop();
         return;
       }
+      const every =
+        this.config.longBreakEvery && this.config.longBreakEvery > 0
+          ? this.config.longBreakEvery
+          : 4;
       const next: Phase =
-        this.state.pomodoroCount % 4 === 0 ? "long-break" : "break";
+        this.state.pomodoroCount % every === 0 ? "long-break" : "break";
       this.setPhase(next);
     } else {
       this.setPhase("work");

@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
 
-export type CueKind = "work" | "break" | "long-break" | "complete";
+export type CueKind = "work" | "break" | "long-break" | "complete" | "warn";
 
 // Best-effort, non-blocking spawn. Never throws — a missing binary just means
 // no sound, which must not interrupt a session.
@@ -21,6 +21,7 @@ const MAC_SOUNDS: Record<CueKind, string> = {
   break: "/System/Library/Sounds/Pop.aiff",
   "long-break": "/System/Library/Sounds/Glass.aiff",
   complete: "/System/Library/Sounds/Hero.aiff",
+  warn: "/System/Library/Sounds/Ping.aiff", // softer heads-up before a transition
 };
 
 /**

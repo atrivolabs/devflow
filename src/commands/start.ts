@@ -11,18 +11,19 @@ import { cue, speak } from "../lib/cues.js";
 import { installHint } from "../lib/deps.js";
 import { findChannel, channelList } from "../lib/channels.js";
 import { loadChannels } from "../lib/channel-source.js";
+import { loadConfig, configExists, saveConfig } from "../lib/config.js";
 import * as session from "../lib/session.js";
 import * as ui from "../lib/display.js";
 import { startHeartbeat, stopHeartbeat } from "../lib/listener.js";
 
 interface StartOptions {
-  channel: string;
+  channel?: string;
   timer?: string;
   pomodoro?: boolean;
   rounds?: string;
-  work: string;
-  break: string;
-  longBreak: string;
+  work?: string;
+  break?: string;
+  longBreak?: string;
   music?: boolean;
   demo?: boolean;
   voice?: boolean;
@@ -36,43 +37,61 @@ export async function startSession(options: StartOptions): Promise<void> {
     return;
   }
 
+  // First run: point them at setup, then write defaults so the tip shows once.
+  const firstRun = !configExists();
+  const cfg = loadConfig();
+  if (firstRun) {
+    console.log(
+      chalk.dim("  👋 First time? Run ") +
+        chalk.bold("devflow setup") +
+        chalk.dim(" to personalize your defaults.\n")
+    );
+    saveConfig(cfg);
+  }
+
   const allChannels = await loadChannels();
-  const channel = findChannel(allChannels, options.channel);
+  const channelName = options.channel ?? cfg.channel;
+  const channel = findChannel(allChannels, channelName);
   if (!channel) {
-    console.log(chalk.red(`Unknown channel: ${options.channel}\n`));
+    console.log(chalk.red(`Unknown channel: ${channelName}\n`));
     console.log(chalk.dim("Available channels:\n" + channelList(allChannels)));
     return;
   }
 
-  // Demo runs an accelerated, seconds-based pomodoro (same numbers, but
-  // unitSeconds=1) so you can hear music start, the work/break transitions, a
-  // long break, and completion in about a minute.
+  // Resolve each setting: explicit flag > config > built-in. Demo overrides
+  // durations with an accelerated, seconds-based preset (unitSeconds=1) so you
+  // can preview music + transitions in about a minute.
   const demo = options.demo ?? false;
   const unitSeconds = demo ? 1 : 60;
-  const work = demo ? 10 : parseInt(options.work, 10);
-  const brk = demo ? 5 : parseInt(options.break, 10);
-  const longBrk = demo ? 8 : parseInt(options.longBreak, 10);
+  const work = demo ? 10 : intOr(options.work, cfg.work);
+  const brk = demo ? 5 : intOr(options.break, cfg.break);
+  const longBrk = demo ? 8 : intOr(options.longBreak, cfg.longBreak);
+  const longBreakEvery = cfg.longBreakEvery;
+  const warnLeadSeconds = cfg.warnLeadSeconds;
   const countdown = options.timer ? parseInt(options.timer, 10) : undefined;
   const rounds = options.rounds
     ? parseInt(options.rounds, 10)
     : demo
       ? 5
-      : undefined;
+      : cfg.rounds ?? undefined;
   const pomodoro = demo || (options.pomodoro ?? false);
   const withMusic = options.music !== false;
-  const voice = options.voice ?? false;
+  const voice = options.voice ?? cfg.voice;
   const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
 
   // Show header
   const headerLines: string[] = [];
   if (pomodoro) {
     const u = demo ? "s" : "";
+    const cadenceLabel = chalk.dim(` · long break every ${longBreakEvery}`);
     const roundsLabel = rounds ? ` · ${rounds} rounds` : "";
     const demoTag = demo ? chalk.yellow(" · DEMO") : "";
     headerLines.push(
       chalk.green(
         `Mode:    Pomodoro (${work}${u}/${brk}${u}/${longBrk}${u})${roundsLabel}`
-      ) + demoTag
+      ) +
+        cadenceLabel +
+        demoTag
     );
   } else if (countdown) {
     headerLines.push(chalk.green(`Mode:    Timer (${countdown}min)`));
@@ -152,10 +171,27 @@ export async function startSession(options: StartOptions): Promise<void> {
       longBreakMinutes: longBrk,
       countdownMinutes: countdown,
       rounds,
+      longBreakEvery,
+      warnLeadSeconds,
       unitSeconds,
     });
 
     timer.on("tick", (state: TimerState) => ui.tickLine(state, fmt(state.remaining)));
+
+    // Proactive heads-up before a transition so you can start wrapping up.
+    timer.on("warning", (state: TimerState) => {
+      cue("warn");
+      const phrase = leadPhrase(warnLeadSeconds);
+      if (voice) {
+        speak(
+          state.phase === "work"
+            ? `${phrase} to go`
+            : `${phrase} left, get ready to focus`
+        );
+      }
+      process.stdout.write("\n");
+      console.log(chalk.dim(`  ⏳ ${phrase} left`));
+    });
 
     timer.on("phase", (state: TimerState) => {
       console.log();
@@ -207,4 +243,18 @@ export async function startSession(options: StartOptions): Promise<void> {
     process.on("SIGINT", () => cleanup());
     process.on("SIGTERM", () => cleanup());
   }
+}
+
+// Parse a flag value, falling back to a config/default when absent or invalid.
+function intOr(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= 1 ? n : fallback;
+}
+
+// Humanize a lead time for the heads-up nudge ("one minute", "2 minutes", "30 seconds").
+function leadPhrase(seconds: number): string {
+  if (seconds === 60) return "one minute";
+  if (seconds % 60 === 0) return `${seconds / 60} minutes`;
+  return `${seconds} seconds`;
 }
