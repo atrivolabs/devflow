@@ -18,6 +18,9 @@ export interface TimerConfig {
   countdownMinutes?: number;
   /** Stop after this many work blocks (pomodoro mode). Undefined = run forever. */
   rounds?: number;
+  /** Seconds per duration unit. Defaults to 60 (durations are minutes); demo
+   *  mode sets it to 1 so the same numbers mean seconds. */
+  unitSeconds?: number;
 }
 
 export class Timer extends EventEmitter {
@@ -101,15 +104,16 @@ export class Timer extends EventEmitter {
   }
 
   private phaseSeconds(phase: Phase): number {
+    const unit = this.config.unitSeconds ?? 60;
     switch (phase) {
       case "work":
-        return this.config.workMinutes * 60;
+        return this.config.workMinutes * unit;
       case "break":
-        return this.config.breakMinutes * 60;
+        return this.config.breakMinutes * unit;
       case "long-break":
-        return this.config.longBreakMinutes * 60;
+        return this.config.longBreakMinutes * unit;
       case "countdown":
-        return (this.config.countdownMinutes ?? 25) * 60;
+        return (this.config.countdownMinutes ?? 25) * unit;
     }
   }
 }

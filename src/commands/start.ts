@@ -17,6 +17,7 @@ interface StartOptions {
   break: string;
   longBreak: string;
   music?: boolean;
+  demo?: boolean;
 }
 
 export async function startSession(options: StartOptions): Promise<void> {
@@ -35,21 +36,34 @@ export async function startSession(options: StartOptions): Promise<void> {
     return;
   }
 
-  const work = parseInt(options.work, 10);
-  const brk = parseInt(options.break, 10);
-  const longBrk = parseInt(options.longBreak, 10);
+  // Demo runs an accelerated, seconds-based pomodoro (same numbers, but
+  // unitSeconds=1) so you can hear music start, the work/break transitions, a
+  // long break, and completion in about a minute.
+  const demo = options.demo ?? false;
+  const unitSeconds = demo ? 1 : 60;
+  const work = demo ? 10 : parseInt(options.work, 10);
+  const brk = demo ? 5 : parseInt(options.break, 10);
+  const longBrk = demo ? 8 : parseInt(options.longBreak, 10);
   const countdown = options.timer ? parseInt(options.timer, 10) : undefined;
-  const rounds = options.rounds ? parseInt(options.rounds, 10) : undefined;
-  const pomodoro = options.pomodoro ?? false;
+  const rounds = options.rounds
+    ? parseInt(options.rounds, 10)
+    : demo
+      ? 5
+      : undefined;
+  const pomodoro = demo || (options.pomodoro ?? false);
   const withMusic = options.music !== false;
   const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
 
   // Show header
   const headerLines: string[] = [];
   if (pomodoro) {
+    const u = demo ? "s" : "";
     const roundsLabel = rounds ? ` · ${rounds} rounds` : "";
+    const demoTag = demo ? chalk.yellow(" · DEMO") : "";
     headerLines.push(
-      chalk.green(`Mode:    Pomodoro (${work}/${brk}/${longBrk})${roundsLabel}`)
+      chalk.green(
+        `Mode:    Pomodoro (${work}${u}/${brk}${u}/${longBrk}${u})${roundsLabel}`
+      ) + demoTag
     );
   } else if (countdown) {
     headerLines.push(chalk.green(`Mode:    Timer (${countdown}min)`));
@@ -129,6 +143,7 @@ export async function startSession(options: StartOptions): Promise<void> {
       longBreakMinutes: longBrk,
       countdownMinutes: countdown,
       rounds,
+      unitSeconds,
     });
 
     timer.on("tick", (state: TimerState) => ui.tickLine(state, fmt(state.remaining)));
