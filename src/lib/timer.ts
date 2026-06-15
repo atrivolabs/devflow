@@ -107,6 +107,8 @@ export class Timer extends EventEmitter {
       this.setPhase("work");
     }
     this.emit("phase", this.snapshot());
+    // Draw the new phase's bar right away so there's no blank gap.
+    this.emit("tick", this.snapshot());
   }
 
   private setPhase(phase: Phase) {

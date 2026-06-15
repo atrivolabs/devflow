@@ -81,30 +81,19 @@ export async function startSession(options: StartOptions): Promise<void> {
   const cueVolume = cfg.cueVolume;
   const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
 
-  // Show header
-  const headerLines: string[] = [];
-  if (pomodoro) {
-    const u = demo ? "s" : "";
-    const cadenceLabel = chalk.dim(` · long break every ${longBreakEvery}`);
-    const roundsLabel = rounds ? ` · ${rounds} rounds` : "";
-    const demoTag = demo ? chalk.yellow(" · DEMO") : "";
-    headerLines.push(
-      chalk.green(
-        `Mode:    Pomodoro (${work}${u}/${brk}${u}/${longBrk}${u})${roundsLabel}`
-      ) +
-        cadenceLabel +
-        demoTag
-    );
-  } else if (countdown) {
-    headerLines.push(chalk.green(`Mode:    Timer (${countdown}min)`));
-  } else {
-    headerLines.push(chalk.green("Mode:    Free flow"));
-  }
-  if (withMusic) {
-    headerLines.push(chalk.cyan(`Channel: ${channel.name}`));
-    headerLines.push(chalk.dim(channel.description));
-  }
-  ui.header(headerLines);
+  // One-line header: mode (bright) · channel · rounds, with a DEMO tag.
+  const u = demo ? "s" : "";
+  const modeStr = pomodoro
+    ? `Pomodoro ${work}${u}/${brk}${u}/${longBrk}${u}`
+    : countdown
+      ? `Timer ${countdown}min`
+      : "Free flow";
+  const bits = [chalk.whiteBright(modeStr)];
+  if (withMusic) bits.push(chalk.dim(channel.name));
+  if (pomodoro && rounds) bits.push(chalk.dim(`${rounds} rounds`));
+  let infoLine = bits.join(chalk.dim(" · "));
+  if (demo) infoLine += "   " + chalk.dim("DEMO");
+  ui.header([infoLine]);
 
   // Persist session
   session.save({
@@ -138,15 +127,15 @@ export async function startSession(options: StartOptions): Promise<void> {
       }
       console.log();
     } else {
-      console.log(chalk.dim("  Loading stream..."));
+      // Write without a newline so we can clear it once the stream resolves.
+      process.stdout.write(chalk.dim("  loading stream…"));
       musicOk = await play(channel, musicVolume);
+      process.stdout.write("\r\x1b[K");
       if (musicOk) {
-        // Clear "Loading stream..." and show playing
-        process.stdout.write("\r\x1b[K");
-        console.log(chalk.green(`  ${channel.icon} Playing ${channel.name}`));
+        console.log(chalk.dim(`  ${channel.icon} playing ${channel.name}`));
         startHeartbeat(channel.id);
       } else {
-        console.log(chalk.yellow("  Stream unavailable. Continuing without music."));
+        console.log(chalk.dim("  stream unavailable — continuing without music"));
       }
     }
   }
@@ -155,14 +144,14 @@ export async function startSession(options: StartOptions): Promise<void> {
 
   // Cleanup handler — single source of truth
   let cleaned = false;
-  const cleanup = (timer?: Timer) => {
+  const cleanup = (timer?: Timer, closing = chalk.dim("\n  stopped")) => {
     if (cleaned) return;
     cleaned = true;
     timer?.stop();
     stopMusic();
     stopHeartbeat();
     session.clear();
-    console.log(chalk.dim("\n  Session ended."));
+    console.log(closing);
     process.exit(0);
   };
 
@@ -197,13 +186,14 @@ export async function startSession(options: StartOptions): Promise<void> {
       }
     });
 
+    // Transitions are marked by the new bar line + the audible cue/voice — no
+    // printed banner. Just commit the finished phase's bar with a newline.
     timer.on("phase", (state: TimerState) => {
-      console.log();
+      process.stdout.write("\n");
       if (state.phase === "work") {
         if (musicOk) resumeMusic();
         cue("work", cueVolume);
         if (voice) speak("Back to work", cueVolume);
-        console.log(chalk.green(`\n  ▶ Back to work! (${fmt(state.total)})`));
       } else {
         if (musicOk) pauseMusic();
         const kind = state.phase === "long-break" ? "long-break" : "break";
@@ -214,19 +204,13 @@ export async function startSession(options: StartOptions): Promise<void> {
             cueVolume
           );
         }
-        const pausedNote = musicOk ? chalk.dim("  (music paused)") : "";
-        console.log(
-          chalk.yellow(`\n  ☕ ${ui.phaseLabel(state.phase)}! (${fmt(state.total)})`) +
-            pausedNote
-        );
       }
     });
 
     timer.on("complete", () => {
       cue("complete", cueVolume);
       if (voice) speak("Session complete", cueVolume);
-      console.log(chalk.green("\n\n  ✓ Session complete!"));
-      cleanup(timer);
+      cleanup(timer, chalk.dim("\n\n  ✓ done"));
     });
 
     // Handle SIGUSR1 for pause toggle from `devflow pause`
@@ -235,10 +219,10 @@ export async function startSession(options: StartOptions): Promise<void> {
       const s = timer.snapshot();
       if (s.paused) {
         if (musicOk) pauseMusic();
-        console.log(chalk.yellow("\n  ⏸  Paused"));
+        console.log(chalk.dim("\n  ⏸  paused"));
       } else {
         if (musicOk) resumeMusic();
-        console.log(chalk.green("\n  ▶  Resumed"));
+        console.log(chalk.dim("\n  ▶  resumed"));
       }
     });
 
