@@ -48,6 +48,7 @@ export function tickLine(state: TimerState, time: string): void {
 export function header(lines: string[]): void {
   console.log();
   console.log(chalk.bold("  devflow"));
+  console.log(chalk.dim("  by Atrivo Labs · atrivolabs.com"));
   console.log(chalk.dim("  ─────────────────────────────"));
   lines.forEach((l) => console.log(`  ${l}`));
   console.log(chalk.dim("  ─────────────────────────────"));

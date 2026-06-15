@@ -77,6 +77,8 @@ export async function startSession(options: StartOptions): Promise<void> {
   const pomodoro = demo || (options.pomodoro ?? false);
   const withMusic = options.music !== false;
   const voice = options.voice ?? cfg.voice;
+  const musicVolume = cfg.musicVolume;
+  const cueVolume = cfg.cueVolume;
   const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
 
   // Show header
@@ -135,7 +137,7 @@ export async function startSession(options: StartOptions): Promise<void> {
       console.log();
     } else {
       console.log(chalk.dim("  Loading stream..."));
-      musicOk = await play(channel);
+      musicOk = await play(channel, musicVolume);
       if (musicOk) {
         // Clear "Loading stream..." and show playing
         process.stdout.write("\r\x1b[K");
@@ -180,13 +182,14 @@ export async function startSession(options: StartOptions): Promise<void> {
 
     // Proactive heads-up before a transition so you can start wrapping up.
     timer.on("warning", (state: TimerState) => {
-      cue("warn");
+      cue("warn", cueVolume);
       const phrase = leadPhrase(warnLeadSeconds);
       if (voice) {
         speak(
           state.phase === "work"
             ? `${phrase} to go`
-            : `${phrase} left, get ready to focus`
+            : `${phrase} left, get ready to focus`,
+          cueVolume
         );
       }
       process.stdout.write("\n");
@@ -197,15 +200,18 @@ export async function startSession(options: StartOptions): Promise<void> {
       console.log();
       if (state.phase === "work") {
         if (musicOk) resumeMusic();
-        cue("work");
-        if (voice) speak("Back to work");
+        cue("work", cueVolume);
+        if (voice) speak("Back to work", cueVolume);
         console.log(chalk.green(`\n  ▶ Back to work! (${fmt(state.total)})`));
       } else {
         if (musicOk) pauseMusic();
         const kind = state.phase === "long-break" ? "long-break" : "break";
-        cue(kind);
+        cue(kind, cueVolume);
         if (voice) {
-          speak(kind === "long-break" ? "Time for a long break" : "Time for a break");
+          speak(
+            kind === "long-break" ? "Time for a long break" : "Time for a break",
+            cueVolume
+          );
         }
         const pausedNote = musicOk ? chalk.dim("  (music paused)") : "";
         console.log(
@@ -216,8 +222,8 @@ export async function startSession(options: StartOptions): Promise<void> {
     });
 
     timer.on("complete", () => {
-      cue("complete");
-      if (voice) speak("Session complete");
+      cue("complete", cueVolume);
+      if (voice) speak("Session complete", cueVolume);
       console.log(chalk.green("\n\n  ✓ Session complete!"));
       cleanup(timer);
     });

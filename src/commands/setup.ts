@@ -70,6 +70,13 @@ export async function setupCmd(): Promise<void> {
     );
     const warnLeadSeconds = await askInt(rl, "  warn seconds before", cur.warnLeadSeconds, 0);
 
+    // Volumes
+    console.log(
+      "\n" + chalk.cyan("  Volumes") + chalk.dim(" — 0–100. 0 mutes that channel.")
+    );
+    const musicVolume = await askInt(rl, "  music volume", cur.musicVolume, 0, 100);
+    const cueVolume = await askInt(rl, "  cue/voice volume", cur.cueVolume, 0, 100);
+
     const cfg: Config = {
       channel,
       work,
@@ -79,6 +86,8 @@ export async function setupCmd(): Promise<void> {
       longBreakEvery,
       voice,
       warnLeadSeconds,
+      musicVolume,
+      cueVolume,
     };
     saveConfig(cfg);
 
@@ -114,14 +123,16 @@ async function askInt(
   rl: Interface,
   label: string,
   def: number,
-  min = 1
+  min = 1,
+  max = Infinity
 ): Promise<number> {
   while (true) {
     const a = (await rl.question(`${label} [${def}]: `)).trim();
     if (!a) return def;
     const n = parseInt(a, 10);
-    if (Number.isFinite(n) && n >= min) return n;
-    console.log(chalk.red(`    enter a number ${min === 0 ? "0 or more" : "1 or more"}`));
+    if (Number.isFinite(n) && n >= min && n <= max) return n;
+    const range = max === Infinity ? `${min} or more` : `${min}–${max}`;
+    console.log(chalk.red(`    enter a number ${range}`));
   }
 }
 

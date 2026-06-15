@@ -11,6 +11,8 @@ export interface Config {
   longBreakEvery: number; // a long break replaces the short one every N blocks
   voice: boolean; // speak transitions aloud
   warnLeadSeconds: number; // heads-up cue this many seconds before a transition; 0 = off
+  musicVolume: number; // 0–100
+  cueVolume: number; // 0–100, applies to transition sounds and voice
 }
 
 export const DEFAULTS: Config = {
@@ -22,6 +24,8 @@ export const DEFAULTS: Config = {
   longBreakEvery: 4,
   voice: false,
   warnLeadSeconds: 60,
+  musicVolume: 40,
+  cueVolume: 100,
 };
 
 const CONFIG_FILE = join(DEVFLOW_DIR, "config.json");
@@ -68,5 +72,13 @@ function sanitize(raw: unknown): Config {
   }
   if (r.rounds === null || posInt(r.rounds)) c.rounds = r.rounds as number | null;
 
+  const vol = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+  if (vol(r.musicVolume)) c.musicVolume = clamp(r.musicVolume as number);
+  if (vol(r.cueVolume)) c.cueVolume = clamp(r.cueVolume as number);
+
   return c;
+}
+
+function clamp(n: number): number {
+  return Math.max(0, Math.min(100, Math.round(n)));
 }

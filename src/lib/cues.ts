@@ -25,15 +25,16 @@ const MAC_SOUNDS: Record<CueKind, string> = {
 };
 
 /**
- * Play a short transition sound. On macOS this is a real system sound ("pop"
- * etc.) via afplay; elsewhere it falls back to the terminal bell so there's
- * still an audible nudge.
+ * Play a short transition sound at the given volume (0–100). On macOS this is a
+ * real system sound ("pop" etc.) via afplay; elsewhere it falls back to the
+ * terminal bell so there's still an audible nudge. volume 0 = silent.
  */
-export function cue(kind: CueKind): void {
+export function cue(kind: CueKind, volume = 100): void {
+  if (volume <= 0) return;
   if (platform() === "darwin") {
     const file = MAC_SOUNDS[kind];
     if (existsSync(file)) {
-      run("afplay", [file]);
+      run("afplay", ["-v", (volume / 100).toFixed(2), file]);
       return;
     }
   }
@@ -41,14 +42,17 @@ export function cue(kind: CueKind): void {
 }
 
 /**
- * Speak a short announcement (opt-in via --voice). macOS uses `say`; Linux
- * tries `spd-say` then `espeak`. Silent no-op if none are installed.
+ * Speak a short announcement (opt-in via --voice) at the given volume (0–100).
+ * macOS uses `say` (volume via an inline `[[volm]]` command); Linux tries
+ * `spd-say`. Silent no-op if disabled or no TTS is installed.
  */
-export function speak(text: string): void {
+export function speak(text: string, volume = 100): void {
+  if (volume <= 0) return;
   if (platform() === "darwin") {
-    run("say", [text]);
+    const v = Math.min(1, volume / 100).toFixed(2);
+    run("say", [`[[volm ${v}]] ${text}`]);
   } else if (platform() === "linux") {
-    // spd-say is the common one; espeak as a fallback. Both no-op if absent.
-    run("spd-say", [text]);
+    // spd-say is the common one. -i sets volume (-100..100). Best-effort.
+    run("spd-say", ["-i", String(Math.round((volume / 100) * 100 - 100)), text]);
   }
 }

@@ -11,7 +11,7 @@ export { checkDeps } from "./deps.js";
 let proc: ChildProcess | null = null;
 let ipcPath: string | null = null;
 
-export async function play(channel: Channel): Promise<boolean> {
+export async function play(channel: Channel, volume = 40): Promise<boolean> {
   await stop();
 
   const mpv = await which("mpv");
@@ -32,7 +32,7 @@ export async function play(channel: Channel): Promise<boolean> {
     [
       "--no-video",
       "--really-quiet",
-      "--volume=40",
+      `--volume=${volume}`,
       `--input-ipc-server=${ipcPath}`,
       url,
     ],
