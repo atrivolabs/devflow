@@ -182,11 +182,12 @@ export async function startSession(options: StartOptions): Promise<void> {
 
     timer.on("tick", (state: TimerState) => ui.tickLine(state, fmt(state.remaining)));
 
-    // Proactive heads-up before a transition so you can start wrapping up.
+    // Proactive heads-up before a transition. Audible only — no printed line,
+    // which would interrupt the live countdown (it redraws in place with \r).
     timer.on("warning", (state: TimerState) => {
       cue("warn", cueVolume);
-      const phrase = leadPhrase(warnLeadSeconds);
       if (voice) {
+        const phrase = leadPhrase(warnLeadSeconds);
         speak(
           state.phase === "work"
             ? `${phrase} to go`
@@ -194,8 +195,6 @@ export async function startSession(options: StartOptions): Promise<void> {
           cueVolume
         );
       }
-      process.stdout.write("\n");
-      console.log(chalk.dim(`  ⏳ ${phrase} left`));
     });
 
     timer.on("phase", (state: TimerState) => {
