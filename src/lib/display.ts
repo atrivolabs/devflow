@@ -36,8 +36,12 @@ export function progressBar(remaining: number, total: number): string {
 export function tickLine(state: TimerState, time: string): void {
   const label = phaseLabel(state.phase);
   const bar = progressBar(state.remaining, state.total);
-  const pom =
-    state.pomodoroCount > 0 ? chalk.dim(` #${state.pomodoroCount}`) : "";
+  // Show the pomodoro you're on. pomodoroCount tracks *completed* work blocks,
+  // so during work the current block is count + 1; a break belongs to the
+  // block that just finished, so it stays at count.
+  const num =
+    state.phase === "work" ? state.pomodoroCount + 1 : state.pomodoroCount;
+  const pom = num > 0 ? chalk.dim(` #${num}`) : "";
   process.stdout.write(`\r  ${label} ${bar} ${chalk.bold(time)}${pom}  `);
 }
 
