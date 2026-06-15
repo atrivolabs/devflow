@@ -13,7 +13,7 @@ export const channels: Channel[] = [
     name: "lo-fi",
     description: "chill beats to code to",
     icon: "~",
-    youtubeIds: ["jfKfPfyJRdk", "rUxyKA_-grg"],
+    youtubeIds: ["5yx6BWlEVcY", "rPjez8z61rI"],
   },
   {
     id: "synthwave",
