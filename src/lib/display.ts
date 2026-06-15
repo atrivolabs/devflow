@@ -25,9 +25,12 @@ export function progressBar(remaining: number, total: number): string {
   if (total === 0) return "";
   const filled = Math.round(((total - remaining) / total) * BAR_WIDTH);
   const empty = BAR_WIDTH - filled;
+  // Live bar fills yellow (in progress); the final bar at 00:00 turns green,
+  // so completed phases left in scrollback read as done.
+  const fill = remaining <= 0 ? chalk.green : chalk.yellow;
   return (
     chalk.dim("[") +
-    chalk.green("█".repeat(filled)) +
+    fill("█".repeat(filled)) +
     chalk.dim("░".repeat(empty)) +
     chalk.dim("]")
   );
