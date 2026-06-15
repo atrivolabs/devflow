@@ -20,7 +20,7 @@ export const channels: Channel[] = [
     name: "synthwave",
     description: "retro-futuristic focus",
     icon: ">",
-    youtubeIds: ["4xDzrJKXOOY", "MVPTGNGiI-4"],
+    youtubeIds: ["4xDzrJKXOOY", "UedTcufyrHc"],
   },
   {
     id: "ambient",
@@ -34,14 +34,14 @@ export const channels: Channel[] = [
     name: "jazz-hop",
     description: "smooth jazz & hip-hop fusion",
     icon: "♪",
-    youtubeIds: ["Dx5qFachd3A", "kgx4WGK0oNU", "fEvM-OUbaKs"],
+    youtubeIds: ["Dx5qFachd3A", "fEvM-OUbaKs"],
   },
   {
     id: "deepfocus",
     name: "deep-focus",
     description: "minimal techno for flow state",
     icon: "◉",
-    youtubeIds: ["hiWGj7j6pxE", "bkxLApqUSbo", "GxV0TggxqC8", "q3_yvs_T4Cc"],
+    youtubeIds: ["bkxLApqUSbo", "GxV0TggxqC8", "q3_yvs_T4Cc"],
   },
   {
     id: "classical",
