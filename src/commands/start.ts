@@ -1,6 +1,13 @@
 import chalk from "chalk";
 import { Timer, fmt, type TimerState } from "../lib/timer.js";
-import { play, stop as stopMusic, checkDeps } from "../lib/player.js";
+import {
+  play,
+  stop as stopMusic,
+  checkDeps,
+  pauseMusic,
+  resumeMusic,
+} from "../lib/player.js";
+import { cue, speak } from "../lib/cues.js";
 import { installHint } from "../lib/deps.js";
 import { findChannel, channelList } from "../lib/channels.js";
 import { loadChannels } from "../lib/channel-source.js";
@@ -18,6 +25,7 @@ interface StartOptions {
   longBreak: string;
   music?: boolean;
   demo?: boolean;
+  voice?: boolean;
 }
 
 export async function startSession(options: StartOptions): Promise<void> {
@@ -52,6 +60,7 @@ export async function startSession(options: StartOptions): Promise<void> {
       : undefined;
   const pomodoro = demo || (options.pomodoro ?? false);
   const withMusic = options.music !== false;
+  const voice = options.voice ?? false;
   const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
 
   // Show header
@@ -151,20 +160,29 @@ export async function startSession(options: StartOptions): Promise<void> {
     timer.on("phase", (state: TimerState) => {
       console.log();
       if (state.phase === "work") {
+        if (musicOk) resumeMusic();
+        cue("work");
+        if (voice) speak("Back to work");
         console.log(chalk.green(`\n  ▶ Back to work! (${fmt(state.total)})`));
       } else {
+        if (musicOk) pauseMusic();
+        const kind = state.phase === "long-break" ? "long-break" : "break";
+        cue(kind);
+        if (voice) {
+          speak(kind === "long-break" ? "Time for a long break" : "Time for a break");
+        }
+        const pausedNote = musicOk ? chalk.dim("  (music paused)") : "";
         console.log(
-          chalk.yellow(
-            `\n  ☕ ${ui.phaseLabel(state.phase)}! (${fmt(state.total)})`
-          )
+          chalk.yellow(`\n  ☕ ${ui.phaseLabel(state.phase)}! (${fmt(state.total)})`) +
+            pausedNote
         );
       }
-      ui.bell();
     });
 
     timer.on("complete", () => {
+      cue("complete");
+      if (voice) speak("Session complete");
       console.log(chalk.green("\n\n  ✓ Session complete!"));
-      ui.bell();
       cleanup(timer);
     });
 
@@ -173,8 +191,10 @@ export async function startSession(options: StartOptions): Promise<void> {
       timer.togglePause();
       const s = timer.snapshot();
       if (s.paused) {
+        if (musicOk) pauseMusic();
         console.log(chalk.yellow("\n  ⏸  Paused"));
       } else {
+        if (musicOk) resumeMusic();
         console.log(chalk.green("\n  ▶  Resumed"));
       }
     });

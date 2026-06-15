@@ -26,6 +26,7 @@ program
   .option("--long-break <minutes>", "Long break duration (every 4th)", "15")
   .option("--no-music", "Timer only, no music")
   .option("--demo", "Accelerated pomodoro (seconds, not minutes) to preview music + transitions")
+  .option("--voice", "Speak transitions aloud (work / break / complete)")
   .action(startSession);
 
 program
