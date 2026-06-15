@@ -1,5 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Channel } from "./channels.js";
+import { which } from "./deps.js";
+
+export { checkDeps } from "./deps.js";
 
 let proc: ChildProcess | null = null;
 
@@ -36,17 +39,3 @@ export function playing(): boolean {
   return proc !== null && !proc.killed;
 }
 
-export async function checkDeps(): Promise<{ mpv: boolean; ytdlp: boolean }> {
-  const [mpv, ytdlp] = await Promise.all([which("mpv"), which("yt-dlp")]);
-  return { mpv: !!mpv, ytdlp: !!ytdlp };
-}
-
-async function which(name: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    const p = spawn("which", [name], { stdio: ["ignore", "pipe", "ignore"] });
-    let out = "";
-    p.stdout.on("data", (d) => { out += d; });
-    p.on("close", (code) => resolve(code === 0 ? out.trim() : null));
-    p.on("error", () => resolve(null));
-  });
-}

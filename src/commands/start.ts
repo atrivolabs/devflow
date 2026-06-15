@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import { Timer, fmt, type TimerState } from "../lib/timer.js";
 import { play, stop as stopMusic, checkDeps } from "../lib/player.js";
+import { installHint } from "../lib/deps.js";
 import { findChannel, channelList } from "../lib/channels.js";
 import * as session from "../lib/session.js";
 import * as ui from "../lib/display.js";
@@ -70,20 +71,19 @@ export async function startSession(options: StartOptions): Promise<void> {
   let musicOk = false;
   if (withMusic) {
     const deps = await checkDeps();
-    if (!deps.mpv) {
+    const missing = [
+      ...(!deps.mpv ? (["mpv"] as const) : []),
+      ...(!deps.ytdlp ? (["yt-dlp"] as const) : []),
+    ];
+    if (missing.length > 0) {
       console.log(
-        chalk.yellow(
-          "  mpv not found — music disabled.\n" +
-            "  Install: brew install mpv (macOS) / sudo apt install mpv (Linux)\n"
-        )
+        chalk.yellow(`  Music disabled — missing: ${missing.join(", ")}`)
       );
-    } else if (!deps.ytdlp) {
-      console.log(
-        chalk.yellow(
-          "  yt-dlp not found — music disabled.\n" +
-            "  Install: brew install yt-dlp (macOS) / pip install yt-dlp\n"
-        )
-      );
+      for (const dep of missing) {
+        console.log(chalk.dim(`\n  Install ${dep}:`));
+        console.log(chalk.dim(installHint(dep)));
+      }
+      console.log();
     } else {
       console.log(chalk.dim("  Loading stream..."));
       musicOk = await play(channel);
