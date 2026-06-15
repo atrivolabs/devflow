@@ -14,6 +14,7 @@ export interface SessionData {
   longBreakMinutes: number;
   countdownMinutes?: number;
   rounds?: number; // pomodoro work blocks before stopping; undefined = unlimited
+  longBreakEvery?: number; // a long break replaces the short one every N blocks
 }
 
 export function save(data: SessionData): void {
