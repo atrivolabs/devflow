@@ -7,6 +7,7 @@ import { pauseSession } from "./commands/pause.js";
 import { stopSession } from "./commands/stop.js";
 import { listChannelsCmd } from "./commands/channels.js";
 import { setupCmd } from "./commands/setup.js";
+import { musicCmd } from "./commands/music.js";
 
 const program = new Command();
 
@@ -39,6 +40,11 @@ program
   .command("pause")
   .description("Toggle pause on the current session")
   .action(pauseSession);
+
+program
+  .command("music")
+  .description("Restart/resume music for the active session")
+  .action(musicCmd);
 
 program
   .command("status")

@@ -6,6 +6,7 @@ import {
   checkDeps,
   pauseMusic,
   resumeMusic,
+  playing,
 } from "../lib/player.js";
 import { cue, speak } from "../lib/cues.js";
 import { installHint } from "../lib/deps.js";
@@ -142,11 +143,74 @@ export async function startSession(options: StartOptions): Promise<void> {
 
   console.log();
 
+  // --- Music resilience (watchdog) ---
+  // mpv exits when a finite track ends, or if it crashes / the stream drops.
+  // Without this, the session would silently fall quiet. We respawn it (a fresh
+  // track) whenever it should be playing but isn't. Breaks pause music (mpv
+  // stays alive), so a paused player is left untouched.
+  let wantMusic = musicOk; // should music be playing right now?
+  let musicSpawnAt = Date.now();
+  let musicFails = 0;
+  let watchdog: ReturnType<typeof setInterval> | null = null;
+
+  const restartMusic = () => {
+    void play(channel, musicVolume); // fire-and-forget; picks a fresh track
+    musicSpawnAt = Date.now();
+  };
+
+  // Bring music back on demand: unpause if merely paused, respawn if it died.
+  const reviveMusic = () => {
+    if (!musicOk) return;
+    wantMusic = true;
+    if (playing()) resumeMusic();
+    else restartMusic();
+  };
+
+  if (musicOk) {
+    watchdog = setInterval(() => {
+      if (!wantMusic || playing()) return; // intentionally paused, or still fine
+      const aliveMs = Date.now() - musicSpawnAt;
+      if (aliveMs < 10_000) {
+        // Died almost immediately — likely a broken stream. Back off after a few.
+        if (++musicFails >= 3) {
+          if (watchdog) clearInterval(watchdog);
+          watchdog = null;
+          return;
+        }
+      } else {
+        musicFails = 0; // played a good while (track ended) — that's normal
+      }
+      restartMusic();
+    }, 5000);
+  }
+
+  // `devflow music` restores music for the active session (any mode).
+  process.on("SIGUSR2", () => {
+    reviveMusic();
+    console.log(chalk.dim("\n  ♪ music restored"));
+  });
+
+  // Swallow stray keystrokes so typing in this pane (e.g. the wrong tmux pane)
+  // doesn't echo onto the live countdown. Raw mode disables echo + line
+  // buffering; we therefore handle Ctrl+C / Ctrl+D ourselves.
+  const stdin = process.stdin;
+  const rawInput = !!stdin.isTTY && typeof stdin.setRawMode === "function";
+
   // Cleanup handler — single source of truth
+  let activeTimer: Timer | undefined;
   let cleaned = false;
-  const cleanup = (timer?: Timer, closing = chalk.dim("\n  stopped")) => {
+  const cleanup = (timer = activeTimer, closing = chalk.dim("\n  stopped")) => {
     if (cleaned) return;
     cleaned = true;
+    if (watchdog) clearInterval(watchdog);
+    if (rawInput) {
+      try {
+        stdin.setRawMode(false);
+      } catch {
+        // ignore — terminal may already be gone
+      }
+      stdin.pause();
+    }
     timer?.stop();
     stopMusic();
     stopHeartbeat();
@@ -154,6 +218,24 @@ export async function startSession(options: StartOptions): Promise<void> {
     console.log(closing);
     process.exit(0);
   };
+
+  if (rawInput) {
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.on("data", (buf: Buffer) => {
+      const key = buf.toString();
+      if (key === "\x03" || key === "\x04") cleanup(); // Ctrl+C / Ctrl+D
+      // any other keystroke is swallowed — not echoed, not acted on
+    });
+    // Safety net: restore the terminal even on an unexpected exit.
+    process.on("exit", () => {
+      try {
+        stdin.setRawMode(false);
+      } catch {
+        // ignore
+      }
+    });
+  }
 
   // Timer modes
   if (mode !== "free") {
@@ -168,6 +250,7 @@ export async function startSession(options: StartOptions): Promise<void> {
       warnLeadSeconds,
       unitSeconds,
     });
+    activeTimer = timer;
 
     // While counting, show time remaining; once a phase completes, show its
     // total duration so the finished line reads as a log of how long it was.
@@ -195,11 +278,12 @@ export async function startSession(options: StartOptions): Promise<void> {
     timer.on("phase", (state: TimerState) => {
       process.stdout.write("\n");
       if (state.phase === "work") {
-        if (musicOk) resumeMusic();
+        reviveMusic();
         cue("work", cueVolume);
         if (voice) speak("Back to work", cueVolume);
       } else {
-        if (musicOk) pauseMusic();
+        wantMusic = false;
+        if (musicOk && playing()) pauseMusic();
         const kind = state.phase === "long-break" ? "long-break" : "break";
         cue(kind, cueVolume);
         if (voice) {
@@ -222,10 +306,11 @@ export async function startSession(options: StartOptions): Promise<void> {
       timer.togglePause();
       const s = timer.snapshot();
       if (s.paused) {
-        if (musicOk) pauseMusic();
+        wantMusic = false;
+        if (musicOk && playing()) pauseMusic();
         console.log(chalk.dim("\n  ⏸  paused"));
       } else {
-        if (musicOk) resumeMusic();
+        reviveMusic();
         console.log(chalk.dim("\n  ▶  resumed"));
       }
     });
