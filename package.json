@@ -34,6 +34,9 @@
     "type": "git",
     "url": "git+https://github.com/atrivolabs/devflow.git"
   },
+  "bugs": {
+    "url": "https://github.com/atrivolabs/devflow/issues"
+  },
   "engines": {
     "node": ">=18"
   },
