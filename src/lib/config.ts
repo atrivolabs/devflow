@@ -10,6 +10,7 @@ export interface Config {
   rounds: number | null; // null = run forever
   longBreakEvery: number; // a long break replaces the short one every N blocks
   voice: boolean; // speak transitions aloud
+  mascot: boolean; // animated runner alongside the progress bar
   warnLeadSeconds: number; // heads-up cue this many seconds before a transition; 0 = off
   musicVolume: number; // 0–100
   cueVolume: number; // 0–100, applies to transition sounds and voice
@@ -23,6 +24,7 @@ export const DEFAULTS: Config = {
   rounds: null,
   longBreakEvery: 4,
   voice: false,
+  mascot: false,
   warnLeadSeconds: 60,
   musicVolume: 40,
   cueVolume: 100,
@@ -60,6 +62,7 @@ function sanitize(raw: unknown): Config {
 
   if (typeof r.channel === "string" && r.channel.trim()) c.channel = r.channel.trim();
   if (typeof r.voice === "boolean") c.voice = r.voice;
+  if (typeof r.mascot === "boolean") c.mascot = r.mascot;
 
   const posInt = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 1;
   if (posInt(r.work)) c.work = r.work as number;
