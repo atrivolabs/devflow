@@ -9,6 +9,7 @@ import { listChannelsCmd } from "./commands/channels.js";
 import { setupCmd } from "./commands/setup.js";
 import { musicCmd } from "./commands/music.js";
 import { statsCmd } from "./commands/stats.js";
+import { feedbackCmd } from "./commands/feedback.js";
 
 const program = new Command();
 
@@ -66,5 +67,11 @@ program
   .command("setup")
   .description("Set up your defaults (channel, durations, voice, nudges)")
   .action(setupCmd);
+
+program
+  .command("feedback")
+  .description("Report a bug or send feedback (opens a pre-filled GitHub issue)")
+  .argument("[message...]", "Optional short summary of the issue")
+  .action(feedbackCmd);
 
 program.parse();
