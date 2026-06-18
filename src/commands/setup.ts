@@ -62,6 +62,14 @@ export async function setupCmd(): Promise<void> {
     );
     const voice = await askBool(rl, "  voice cues", cur.voice);
 
+    // Mascot
+    console.log(
+      "\n" +
+        chalk.cyan("  Mascot") +
+        chalk.dim(" — a little runner that jogs along the progress bar.")
+    );
+    const mascot = await askBool(rl, "  show mascot", cur.mascot);
+
     // Heads-up warning
     console.log(
       "\n" +
@@ -85,6 +93,7 @@ export async function setupCmd(): Promise<void> {
       rounds,
       longBreakEvery,
       voice,
+      mascot,
       warnLeadSeconds,
       musicVolume,
       cueVolume,

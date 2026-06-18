@@ -30,6 +30,7 @@ interface StartOptions {
   music?: boolean;
   demo?: boolean;
   voice?: boolean;
+  mascot?: boolean;
 }
 
 export async function startSession(options: StartOptions): Promise<void> {
@@ -75,6 +76,7 @@ export async function startSession(options: StartOptions): Promise<void> {
   const pomodoro = demo || (options.pomodoro ?? false);
   const withMusic = options.music !== false;
   const voice = options.voice ?? cfg.voice;
+  const mascot = options.mascot ?? cfg.mascot;
   const musicVolume = cfg.musicVolume;
   const cueVolume = cfg.cueVolume;
   const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
@@ -315,7 +317,7 @@ export async function startSession(options: StartOptions): Promise<void> {
     // While counting, show time remaining; once a phase completes, show its
     // total duration so the finished line reads as a log of how long it was.
     timer.on("tick", (state: TimerState) =>
-      ui.tickLine(state, fmt(state.remaining > 0 ? state.remaining : state.total))
+      ui.tickLine(state, fmt(state.remaining > 0 ? state.remaining : state.total), mascot)
     );
 
     // Proactive heads-up before a transition. Audible only — no printed line,

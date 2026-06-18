@@ -31,6 +31,8 @@ program
   .option("--no-music", "Timer only, no music")
   .option("--demo", "Accelerated pomodoro (seconds, not minutes) to preview music + transitions")
   .option("--voice", "Speak transitions aloud (work / break / complete)")
+  .option("--mascot", "Show an animated runner alongside the progress bar")
+  .option("--no-mascot", "Hide the animated runner")
   .action(startSession);
 
 program
