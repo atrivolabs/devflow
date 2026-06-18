@@ -14,7 +14,7 @@ class Devflow < Formula
   # Published npm tarball for the scoped package (binary stays `devflow`).
   # Update both lines on every release (see README.md "Releasing").
   url "https://registry.npmjs.org/@atrivolabs/devflow/-/devflow-0.1.0.tgz"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "2a2a7abe7a840237e1a0c119d690c74cede9f7b4d68e66bf9b56e67880250b29"
   license "MIT"
 
   depends_on "node"
