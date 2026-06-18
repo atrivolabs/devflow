@@ -60,3 +60,28 @@ export function header(lines: string[]): void {
 export function bell(): void {
   process.stdout.write("\x07");
 }
+
+// Full-screen takeover via the terminal's alternate screen buffer — the same
+// trick vim / less / htop use. `enter` switches to a fresh blank screen and
+// hides the cursor; `exit` restores the user's original terminal (scrollback
+// and all) and shows the cursor again. Only acts on a real TTY, so piped or
+// non-interactive output is left exactly as-is. Best-effort: never throws, and
+// `exit` is safe to call more than once (the cleanup path + the on-exit safety
+// net both call it).
+export function enterFullscreen(): void {
+  if (!process.stdout.isTTY) return;
+  try {
+    process.stdout.write("\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l");
+  } catch {
+    // ignore — terminal may not support it
+  }
+}
+
+export function exitFullscreen(): void {
+  if (!process.stdout.isTTY) return;
+  try {
+    process.stdout.write("\x1b[?25h\x1b[?1049l");
+  } catch {
+    // ignore
+  }
+}
