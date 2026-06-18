@@ -1,7 +1,10 @@
 import chalk from "chalk";
 import type { Phase, TimerState } from "./timer.js";
 
+// Default/maximum bar width; the live bar shrinks below this to fit a narrow
+// terminal, and is dropped entirely when there isn't even room for BAR_MIN.
 const BAR_WIDTH = 24;
+const BAR_MIN = 6;
 
 // Greyscale: focus stands out (bright), breaks recede (dim). All padded to a
 // fixed width so the bars line up regardless of phase.
@@ -23,10 +26,10 @@ export function phaseLabel(phase: Phase): string {
   return PHASE_LABELS[phase](PHASE_NAMES[phase].padEnd(5));
 }
 
-export function progressBar(remaining: number, total: number): string {
-  if (total === 0) return "";
-  const filled = Math.round(((total - remaining) / total) * BAR_WIDTH);
-  const empty = BAR_WIDTH - filled;
+export function progressBar(remaining: number, total: number, width = BAR_WIDTH): string {
+  if (total === 0 || width <= 0) return "";
+  const filled = Math.round(((total - remaining) / total) * width);
+  const empty = width - filled;
   // Live bar fills bright white (in progress); the final bar at 00:00 fades to
   // grey, so completed phases left in scrollback read as past.
   const fill = remaining <= 0 ? chalk.gray : chalk.whiteBright;
@@ -39,15 +42,41 @@ export function progressBar(remaining: number, total: number): string {
 }
 
 export function tickLine(state: TimerState, time: string): void {
-  const label = phaseLabel(state.phase);
-  const bar = progressBar(state.remaining, state.total);
+  const label = phaseLabel(state.phase); // styled, but 5 columns wide
   // Show the pomodoro you're on. pomodoroCount tracks *completed* work blocks,
   // so during work the current block is count + 1; a break belongs to the
   // block that just finished, so it stays at count.
   const num =
     state.phase === "work" ? state.pomodoroCount + 1 : state.pomodoroCount;
-  const pom = num > 0 ? chalk.dim(` #${num}`) : "";
-  process.stdout.write(`\r  ${label} ${bar} ${chalk.bold(time)}${pom}  `);
+  const pomText = num > 0 ? ` #${num}` : "";
+
+  // Size the bar to the terminal so the line never exceeds one physical row —
+  // otherwise it soft-wraps and the leading `\r` can't overwrite the wrapped
+  // remainder, scrolling the pane every tick (esp. small tmux splits). Reason
+  // in *visible* columns, not string length: chalk's ANSI codes add bytes but
+  // no width. Layout: "  " + label(5) + " " + [bar] + " " + time + pom + " ".
+  const cols = process.stdout.columns || 80;
+  const fixed = 2 + 5 + 1 + 1 + time.length + pomText.length + 1;
+  const barBudget = cols - fixed - 2; // -2 for the bar's "[" and "]"
+
+  let line: string;
+  if (barBudget >= BAR_MIN) {
+    const bar = progressBar(state.remaining, state.total, Math.min(BAR_WIDTH, barBudget));
+    line = `  ${label} ${bar} ${chalk.bold(time)}${chalk.dim(pomText)} `;
+  } else if (2 + 5 + 1 + time.length <= cols) {
+    // Too narrow for a bar: label + time, dropping the pomodoro tag if even that
+    // wouldn't fit.
+    const pom = 2 + 5 + 1 + time.length + pomText.length <= cols ? chalk.dim(pomText) : "";
+    line = `  ${label} ${chalk.bold(time)}${pom}`;
+  } else {
+    // Pathologically narrow (< ~13 cols): just the clock, truncated so even this
+    // can never wrap.
+    line = time.slice(0, Math.max(0, cols));
+  }
+
+  // `\x1b[K` clears to end of line so a previous, wider frame leaves nothing
+  // behind; combined with the width-aware sizing the line can't wrap.
+  process.stdout.write(`\r\x1b[K${line}`);
 }
 
 export function header(lines: string[]): void {
