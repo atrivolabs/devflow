@@ -4,7 +4,7 @@
   "description": "Focus companion for developers — music, pomodoro, and session flow",
   "type": "module",
   "bin": {
-    "devflow": "./dist/cli.js"
+    "devflow": "dist/cli.js"
   },
   "files": [
     "dist"

@@ -42,13 +42,22 @@ devflow stats              # your focus history
 
   See **[docs/dependencies.md](docs/dependencies.md)** for the full rationale, per-OS instructions, the `deno` note, and troubleshooting (stale yt-dlp, custom Homebrew prefixes, etc.).
 
-### From npm
+### Via Homebrew (recommended on macOS/Linux)
 
-Publishing to npm is in progress ([#6](https://github.com/atrivolabs/devflow/issues/6)). Once it lands:
+```sh
+brew install atrivolabs/tap/devflow
+```
+
+This pulls in `mpv` and `yt-dlp` automatically (declared as formula
+dependencies), so music works out of the box with no extra setup.
+
+### From npm
 
 ```sh
 npm i -g @atrivolabs/devflow
 ```
+
+You'll need `mpv` and `yt-dlp` on your `PATH` (see [Prerequisites](#prerequisites) above).
 
 ### From source (works today)
 
