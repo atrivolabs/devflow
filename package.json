@@ -1,10 +1,10 @@
 {
-  "name": "devflow",
+  "name": "@atrivolabs/devflow",
   "version": "0.1.0",
   "description": "Focus companion for developers — music, pomodoro, and session flow",
   "type": "module",
   "bin": {
-    "devflow": "./dist/cli.js"
+    "devflow": "dist/cli.js"
   },
   "files": [
     "dist"
@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsup src/cli.ts --format esm --clean",
     "dev": "tsx src/cli.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
   },
   "keywords": [
     "cli",
