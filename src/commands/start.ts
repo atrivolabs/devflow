@@ -39,17 +39,12 @@ export async function startSession(options: StartOptions): Promise<void> {
     return;
   }
 
-  // First run: point them at setup, then write defaults so the tip shows once.
+  // First run: write defaults so the setup tip shows once. The tip itself is
+  // printed below, after we take over the screen, so it doesn't flash on the
+  // real terminal and then vanish.
   const firstRun = !configExists();
   const cfg = loadConfig();
-  if (firstRun) {
-    console.log(
-      chalk.dim("  👋 First time? Run ") +
-        chalk.bold("devflow setup") +
-        chalk.dim(" to personalize your defaults.\n")
-    );
-    saveConfig(cfg);
-  }
+  if (firstRun) saveConfig(cfg);
 
   const allChannels = await loadChannels();
   const channelName = options.channel ?? cfg.channel;
@@ -82,6 +77,21 @@ export async function startSession(options: StartOptions): Promise<void> {
   const musicVolume = cfg.musicVolume;
   const cueVolume = cfg.cueVolume;
   const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
+
+  // Take over the screen (alternate buffer) now that every early-exit check
+  // above has passed — those error paths must stay on the real terminal. The
+  // matching restore happens in cleanup(); this on-exit hook is a safety net
+  // for any path that bypasses it (e.g. an unexpected throw).
+  ui.enterFullscreen();
+  process.on("exit", () => ui.exitFullscreen());
+
+  if (firstRun) {
+    console.log(
+      chalk.dim("  👋 First time? Run ") +
+        chalk.bold("devflow setup") +
+        chalk.dim(" to personalize your defaults.\n")
+    );
+  }
 
   // One-line header: mode (bright) · channel · rounds, with a DEMO tag.
   const u = demo ? "s" : "";
@@ -204,11 +214,7 @@ export async function startSession(options: StartOptions): Promise<void> {
   // Cleanup handler — single source of truth
   let activeTimer: Timer | undefined;
   let cleaned = false;
-  const cleanup = (
-    timer = activeTimer,
-    closing = chalk.dim("\n  stopped"),
-    completed = false
-  ) => {
+  const cleanup = (timer = activeTimer, completed = false) => {
     if (cleaned) return;
     cleaned = true;
     if (watchdog) clearInterval(watchdog);
@@ -224,27 +230,36 @@ export async function startSession(options: StartOptions): Promise<void> {
     stopMusic();
     stopHeartbeat();
 
+    const snap = timer?.snapshot();
+    const focusMinutes = Math.round(
+      focusSecondsOf(snap, mode, work, unitSeconds, startedAt) / 60
+    );
+    const poms = snap?.pomodoroCount ?? 0;
+
     // Log the finished session to local history (powers `devflow stats`). Demo
     // runs are previews, not real focus, so they're never recorded. Skip
     // sub-minute sessions to avoid noise.
-    if (!demo) {
-      const snap = timer?.snapshot();
-      const focusMinutes = Math.round(focusSecondsOf(snap, mode, work, unitSeconds, startedAt) / 60);
-      if (focusMinutes >= 1) {
-        history.record({
-          timestamp: new Date().toISOString(),
-          mode,
-          channel: withMusic ? channel.id : "",
-          focusMinutes,
-          workBlocks: snap?.pomodoroCount ?? 0,
-          breaks: breaksTaken,
-          completed,
-        });
-      }
+    if (!demo && focusMinutes >= 1) {
+      history.record({
+        timestamp: new Date().toISOString(),
+        mode,
+        channel: withMusic ? channel.id : "",
+        focusMinutes,
+        workBlocks: poms,
+        breaks: breaksTaken,
+        completed,
+      });
     }
 
     session.clear();
-    console.log(closing);
+
+    // Restore the user's terminal (leave the alt screen) *before* printing the
+    // recap, so the summary lands in their real scrollback and outlives the
+    // session.
+    ui.exitFullscreen();
+    console.log(
+      sessionSummary(completed, focusMinutes, mode, poms, withMusic ? channel.name : null)
+    );
     process.exit(0);
   };
 
@@ -328,7 +343,7 @@ export async function startSession(options: StartOptions): Promise<void> {
     timer.on("complete", () => {
       cue("complete", cueVolume);
       if (voice) speak("Session complete", cueVolume);
-      cleanup(timer, chalk.dim("\n\n  ✓ done"), true);
+      cleanup(timer, true);
     });
 
     // Handle SIGUSR1 for pause toggle from `devflow pause`
@@ -379,6 +394,35 @@ function focusSecondsOf(
     seconds += snap.total - snap.remaining;
   }
   return seconds;
+}
+
+// A compact one-line recap printed to the real terminal after the session
+// (and the alt screen) is torn down, so there's a trace left behind:
+//   ✓ done · 1h 15m focused · 3 pomodoros · lo-fi
+function sessionSummary(
+  completed: boolean,
+  focusMinutes: number,
+  mode: "pomodoro" | "countdown" | "free",
+  pomodoros: number,
+  channelName: string | null
+): string {
+  const parts: string[] = [];
+  if (focusMinutes >= 1) parts.push(`${fmtDuration(focusMinutes)} focused`);
+  if (mode === "pomodoro" && pomodoros > 0) {
+    parts.push(`${pomodoros} ${pomodoros === 1 ? "pomodoro" : "pomodoros"}`);
+  }
+  if (channelName) parts.push(channelName);
+  const head = completed ? "✓ done" : "stopped";
+  const tail = parts.length ? "  ·  " + parts.join("  ·  ") : "";
+  return "\n  " + chalk.dim(head + tail);
+}
+
+function fmtDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
 }
 
 // Parse a flag value, falling back to a config/default when absent or invalid.
