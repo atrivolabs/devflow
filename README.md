@@ -104,7 +104,22 @@ pnpm dev start --demo
 | `--long-break <minutes>` | Long break duration. |
 | `--no-music` | Timer only, no music. |
 | `--voice` | Speak transitions aloud ("Back to work", "Time for a break"). |
+| `--mascot` / `--no-mascot` | Show / hide an animated runner alongside the progress bar. |
 | `--demo` | Accelerated pomodoro (seconds, not minutes) to preview everything quickly. |
+
+### Live controls
+
+While a session is running you can change things on the fly — no restart needed:
+
+| Key | Action |
+|-----|--------|
+| `space` | Pause / resume |
+| `n` | Switch to the next channel |
+| `m` | Toggle the mascot |
+| `v` | Toggle voice cues |
+| `+` / `-` | Volume up / down |
+| `?` | Show the key hints |
+| `Ctrl+C` | Stop the session |
 
 ## Configuration
 

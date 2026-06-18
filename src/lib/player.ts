@@ -73,6 +73,12 @@ export function resumeMusic(): void {
   ipcCommand(["set_property", "pause", false]);
 }
 
+// Live volume change on the running mpv (0–100). Best-effort like the rest of
+// the IPC; a new track spawned later picks up the volume via play()'s argument.
+export function setVolume(volume: number): void {
+  ipcCommand(["set_property", "volume", volume]);
+}
+
 export async function stop(): Promise<void> {
   if (proc && !proc.killed) {
     proc.kill("SIGTERM");

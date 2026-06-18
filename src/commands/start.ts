@@ -6,12 +6,13 @@ import {
   checkDeps,
   pauseMusic,
   resumeMusic,
+  setVolume,
   playing,
 } from "../lib/player.js";
 import { cue, speak } from "../lib/cues.js";
 import { installHint } from "../lib/deps.js";
 import { ensureYtdlp } from "../lib/vendor.js";
-import { findChannel, channelList } from "../lib/channels.js";
+import { findChannel, channelList, type Channel } from "../lib/channels.js";
 import { loadChannels } from "../lib/channel-source.js";
 import { loadConfig, configExists, saveConfig } from "../lib/config.js";
 import * as session from "../lib/session.js";
@@ -50,12 +51,14 @@ export async function startSession(options: StartOptions): Promise<void> {
 
   const allChannels = await loadChannels();
   const channelName = options.channel ?? cfg.channel;
-  const channel = findChannel(allChannels, channelName);
-  if (!channel) {
+  const resolvedChannel = findChannel(allChannels, channelName);
+  if (!resolvedChannel) {
     console.log(chalk.red(`Unknown channel: ${channelName}\n`));
     console.log(chalk.dim("Available channels:\n" + channelList(allChannels)));
     return;
   }
+  // Mutable so hotkeys can switch channels live (see the key handler below).
+  let channel: Channel = resolvedChannel;
 
   // Resolve each setting: explicit flag > config > built-in. Demo overrides
   // durations with an accelerated, seconds-based preset (unitSeconds=1) so you
@@ -75,9 +78,10 @@ export async function startSession(options: StartOptions): Promise<void> {
       : cfg.rounds ?? undefined;
   const pomodoro = demo || (options.pomodoro ?? false);
   const withMusic = options.music !== false;
-  const voice = options.voice ?? cfg.voice;
-  const mascot = options.mascot ?? cfg.mascot;
-  const musicVolume = cfg.musicVolume;
+  // Mutable so hotkeys can toggle/adjust them live during the session.
+  let voice = options.voice ?? cfg.voice;
+  let mascot = options.mascot ?? cfg.mascot;
+  let musicVolume = cfg.musicVolume;
   const cueVolume = cfg.cueVolume;
   const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
 
@@ -281,13 +285,85 @@ export async function startSession(options: StartOptions): Promise<void> {
     process.exit(0);
   };
 
+  // --- Live hotkeys ---
+  // Single keys act immediately and only do safe, reversible things; quitting
+  // stays on Ctrl+C/Ctrl+D so a stray keystroke (wrong tmux pane) can't end a
+  // session. Feedback is a dim status line, the same way the pause/music
+  // handlers already report — the countdown resumes below it.
+  const HINTS =
+    "keys: space pause · n channel · m mascot · v voice · +/- volume · ? help";
+
+  function statusLine(text: string): void {
+    // Commit the current countdown frame, print the status below it, and leave
+    // the cursor on a fresh line so the live countdown resumes underneath.
+    process.stdout.write(`\n\r  ${chalk.dim(text)}\n\r`);
+  }
+
+  function togglePause(): void {
+    if (!activeTimer) return; // free flow has no timer to pause
+    activeTimer.togglePause();
+    if (activeTimer.snapshot().paused) {
+      wantMusic = false;
+      if (musicOk && playing()) pauseMusic();
+      statusLine("⏸  paused");
+    } else {
+      reviveMusic();
+      statusLine("▶  resumed");
+    }
+  }
+
+  function cycleChannel(): void {
+    if (allChannels.length < 2) return;
+    const i = allChannels.findIndex((c) => c.id === channel.id);
+    channel = allChannels[(i + 1) % allChannels.length];
+    if (musicOk) {
+      stopHeartbeat();
+      startHeartbeat(channel.id);
+      if (wantMusic) restartMusic(); // play() stops the old stream first
+    }
+    statusLine(`${channel.icon} ${channel.name}`);
+  }
+
+  function adjustVolume(delta: number): void {
+    musicVolume = Math.max(0, Math.min(100, musicVolume + delta));
+    setVolume(musicVolume);
+    statusLine(`volume ${musicVolume}`);
+  }
+
+  function handleKey(key: string): void {
+    switch (key) {
+      case " ":
+        return togglePause();
+      case "n":
+      case "N":
+        return cycleChannel();
+      case "m":
+      case "M":
+        mascot = !mascot;
+        return statusLine(`mascot ${mascot ? "on" : "off"}`);
+      case "v":
+      case "V":
+        voice = !voice;
+        return statusLine(`voice ${voice ? "on" : "off"}`);
+      case "+":
+      case "=":
+        return adjustVolume(5);
+      case "-":
+      case "_":
+        return adjustVolume(-5);
+      case "?":
+        return statusLine(HINTS);
+      // anything else is swallowed — not echoed, not acted on
+    }
+  }
+
   if (rawInput) {
     stdin.setRawMode(true);
     stdin.resume();
     stdin.on("data", (buf: Buffer) => {
       const key = buf.toString();
-      if (key === "\x03" || key === "\x04") cleanup(); // Ctrl+C / Ctrl+D
-      // any other keystroke is swallowed — not echoed, not acted on
+      if (key === "\x03" || key === "\x04") return cleanup(); // Ctrl+C / Ctrl+D
+      handleKey(key);
     });
     // Safety net: restore the terminal even on an unexpected exit.
     process.on("exit", () => {
@@ -297,6 +373,7 @@ export async function startSession(options: StartOptions): Promise<void> {
         // ignore
       }
     });
+    console.log(chalk.dim("  " + HINTS) + "\n");
   }
 
   // Timer modes
@@ -364,19 +441,9 @@ export async function startSession(options: StartOptions): Promise<void> {
       cleanup(timer, true);
     });
 
-    // Handle SIGUSR1 for pause toggle from `devflow pause`
-    process.on("SIGUSR1", () => {
-      timer.togglePause();
-      const s = timer.snapshot();
-      if (s.paused) {
-        wantMusic = false;
-        if (musicOk && playing()) pauseMusic();
-        console.log(chalk.dim("\n  ⏸  paused"));
-      } else {
-        reviveMusic();
-        console.log(chalk.dim("\n  ▶  resumed"));
-      }
-    });
+    // Handle SIGUSR1 for pause toggle from `devflow pause` — same path as the
+    // in-session space hotkey.
+    process.on("SIGUSR1", () => togglePause());
 
     timer.start();
     process.on("SIGINT", () => cleanup(timer));
