@@ -11,7 +11,11 @@ export { checkDeps } from "./deps.js";
 let proc: ChildProcess | null = null;
 let ipcPath: string | null = null;
 
-export async function play(channel: Channel, volume = 40): Promise<boolean> {
+export async function play(
+  channel: Channel,
+  volume = 40,
+  ytdlpPath?: string
+): Promise<boolean> {
   await stop();
 
   const mpv = await which("mpv");
@@ -26,18 +30,18 @@ export async function play(channel: Channel, volume = 40): Promise<boolean> {
   // without tearing down and re-resolving the stream.
   ipcPath = join(tmpdir(), `devflow-mpv-${process.pid}.sock`);
 
-  // mpv handles YouTube natively (via yt-dlp/youtube-dl)
-  proc = spawn(
-    mpv,
-    [
-      "--no-video",
-      "--really-quiet",
-      `--volume=${volume}`,
-      `--input-ipc-server=${ipcPath}`,
-      url,
-    ],
-    { stdio: "ignore" }
-  );
+  // mpv handles YouTube natively (via yt-dlp/youtube-dl). When we've vendored
+  // our own yt-dlp (it isn't on PATH), point mpv's ytdl hook straight at it.
+  const args = [
+    "--no-video",
+    "--really-quiet",
+    `--volume=${volume}`,
+    `--input-ipc-server=${ipcPath}`,
+  ];
+  if (ytdlpPath) args.push(`--script-opts=ytdl_hook-ytdl_path=${ytdlpPath}`);
+  args.push(url);
+
+  proc = spawn(mpv, args, { stdio: "ignore" });
 
   proc.on("error", () => { proc = null; });
   proc.on("exit", () => { proc = null; });
