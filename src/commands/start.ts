@@ -14,6 +14,7 @@ import { findChannel, channelList } from "../lib/channels.js";
 import { loadChannels } from "../lib/channel-source.js";
 import { loadConfig, configExists, saveConfig } from "../lib/config.js";
 import * as session from "../lib/session.js";
+import * as history from "../lib/history.js";
 import * as ui from "../lib/display.js";
 import { startHeartbeat, stopHeartbeat } from "../lib/listener.js";
 
@@ -97,11 +98,12 @@ export async function startSession(options: StartOptions): Promise<void> {
   ui.header([infoLine]);
 
   // Persist session
+  const startedAt = new Date().toISOString();
   session.save({
     pid: process.pid,
     channel: channel.id,
     mode,
-    startedAt: new Date().toISOString(),
+    startedAt,
     workMinutes: work,
     breakMinutes: brk,
     longBreakMinutes: longBrk,
@@ -196,10 +198,17 @@ export async function startSession(options: StartOptions): Promise<void> {
   const stdin = process.stdin;
   const rawInput = !!stdin.isTTY && typeof stdin.setRawMode === "function";
 
+  // Breaks taken so far — counted as each break phase begins. Used for stats.
+  let breaksTaken = 0;
+
   // Cleanup handler — single source of truth
   let activeTimer: Timer | undefined;
   let cleaned = false;
-  const cleanup = (timer = activeTimer, closing = chalk.dim("\n  stopped")) => {
+  const cleanup = (
+    timer = activeTimer,
+    closing = chalk.dim("\n  stopped"),
+    completed = false
+  ) => {
     if (cleaned) return;
     cleaned = true;
     if (watchdog) clearInterval(watchdog);
@@ -214,6 +223,26 @@ export async function startSession(options: StartOptions): Promise<void> {
     timer?.stop();
     stopMusic();
     stopHeartbeat();
+
+    // Log the finished session to local history (powers `devflow stats`). Demo
+    // runs are previews, not real focus, so they're never recorded. Skip
+    // sub-minute sessions to avoid noise.
+    if (!demo) {
+      const snap = timer?.snapshot();
+      const focusMinutes = Math.round(focusSecondsOf(snap, mode, work, unitSeconds, startedAt) / 60);
+      if (focusMinutes >= 1) {
+        history.record({
+          timestamp: new Date().toISOString(),
+          mode,
+          channel: withMusic ? channel.id : "",
+          focusMinutes,
+          workBlocks: snap?.pomodoroCount ?? 0,
+          breaks: breaksTaken,
+          completed,
+        });
+      }
+    }
+
     session.clear();
     console.log(closing);
     process.exit(0);
@@ -282,6 +311,7 @@ export async function startSession(options: StartOptions): Promise<void> {
         cue("work", cueVolume);
         if (voice) speak("Back to work", cueVolume);
       } else {
+        breaksTaken++;
         wantMusic = false;
         if (musicOk && playing()) pauseMusic();
         const kind = state.phase === "long-break" ? "long-break" : "break";
@@ -298,7 +328,7 @@ export async function startSession(options: StartOptions): Promise<void> {
     timer.on("complete", () => {
       cue("complete", cueVolume);
       if (voice) speak("Session complete", cueVolume);
-      cleanup(timer, chalk.dim("\n\n  ✓ done"));
+      cleanup(timer, chalk.dim("\n\n  ✓ done"), true);
     });
 
     // Handle SIGUSR1 for pause toggle from `devflow pause`
@@ -323,6 +353,32 @@ export async function startSession(options: StartOptions): Promise<void> {
     process.on("SIGINT", () => cleanup());
     process.on("SIGTERM", () => cleanup());
   }
+}
+
+// How much focus time accrued, in seconds, for the history log. Breaks don't
+// count. Free mode has no timer, so it's wall-clock elapsed since start.
+// Countdown is whatever ran. Pomodoro is completed work blocks plus any partial
+// progress through the current block (when interrupted mid-work).
+function focusSecondsOf(
+  snap: TimerState | undefined,
+  mode: "pomodoro" | "countdown" | "free",
+  workMinutes: number,
+  unitSeconds: number,
+  startedAt: string
+): number {
+  if (mode === "free") {
+    return Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
+  }
+  if (!snap) return 0;
+  if (mode === "countdown") {
+    return Math.max(0, snap.total - snap.remaining);
+  }
+  // pomodoro
+  let seconds = snap.pomodoroCount * workMinutes * unitSeconds;
+  if (snap.phase === "work" && snap.remaining > 0) {
+    seconds += snap.total - snap.remaining;
+  }
+  return seconds;
 }
 
 // Parse a flag value, falling back to a config/default when absent or invalid.
