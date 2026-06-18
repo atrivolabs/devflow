@@ -10,6 +10,7 @@ import {
 } from "../lib/player.js";
 import { cue, speak } from "../lib/cues.js";
 import { installHint } from "../lib/deps.js";
+import { ensureYtdlp } from "../lib/vendor.js";
 import { findChannel, channelList } from "../lib/channels.js";
 import { loadChannels } from "../lib/channel-source.js";
 import { loadConfig, configExists, saveConfig } from "../lib/config.js";
@@ -124,11 +125,26 @@ export async function startSession(options: StartOptions): Promise<void> {
 
   // Start music
   let musicOk = false;
+  let ytdlpPath: string | undefined; // set when we vendor our own yt-dlp
   if (withMusic) {
     const deps = await checkDeps();
+
+    // mpv finds yt-dlp on PATH; if it isn't there, fetch the official
+    // standalone binary into ~/.config/devflow/bin so music works on a fresh
+    // npm/pnpm install (one-time, no brew/sudo). mpv can't be vendored, so a
+    // missing mpv still falls back to the install hint.
+    if (!deps.ytdlp) {
+      process.stdout.write(
+        chalk.dim("  fetching yt-dlp (one-time, from github.com/yt-dlp)…")
+      );
+      ytdlpPath = (await ensureYtdlp()) ?? undefined;
+      process.stdout.write("\r\x1b[K");
+    }
+
+    const haveYtdlp = deps.ytdlp || !!ytdlpPath;
     const missing = [
       ...(!deps.mpv ? (["mpv"] as const) : []),
-      ...(!deps.ytdlp ? (["yt-dlp"] as const) : []),
+      ...(!haveYtdlp ? (["yt-dlp"] as const) : []),
     ];
     if (missing.length > 0) {
       console.log(
@@ -142,7 +158,7 @@ export async function startSession(options: StartOptions): Promise<void> {
     } else {
       // Write without a newline so we can clear it once the stream resolves.
       process.stdout.write(chalk.dim("  loading stream…"));
-      musicOk = await play(channel, musicVolume);
+      musicOk = await play(channel, musicVolume, ytdlpPath);
       process.stdout.write("\r\x1b[K");
       if (musicOk) {
         console.log(chalk.dim(`  ${channel.icon} playing ${channel.name}`));
@@ -166,7 +182,7 @@ export async function startSession(options: StartOptions): Promise<void> {
   let watchdog: ReturnType<typeof setInterval> | null = null;
 
   const restartMusic = () => {
-    void play(channel, musicVolume); // fire-and-forget; picks a fresh track
+    void play(channel, musicVolume, ytdlpPath); // fire-and-forget; fresh track
     musicSpawnAt = Date.now();
   };
 

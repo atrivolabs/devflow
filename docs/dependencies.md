@@ -37,6 +37,19 @@ winget install mpv.mpv yt-dlp.yt-dlp
 If either is missing, `devflow start` prints the right command for your OS and
 continues without music — it never hard-fails.
 
+### Auto-fetching yt-dlp
+
+`yt-dlp` ships as a single self-contained binary, so if it isn't on your `PATH`,
+`devflow start` downloads the official release for your platform into
+`~/.config/devflow/bin/` on first use (one-time, no `brew`/`sudo`) and points
+mpv at it. The download is verified against the release's published
+`SHA2-256SUMS` before it's installed, and it self-updates via `yt-dlp -U`. Set
+`DEVFLOW_NO_DOWNLOAD=1` to opt out and keep the detect-and-instruct behavior.
+
+`mpv` is **not** auto-fetched — it's a large native app with no clean
+single-file build, so it stays a detect-and-instruct dependency (install it with
+the commands above).
+
 ## How playback works
 
 ```
