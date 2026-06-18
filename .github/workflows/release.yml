@@ -1,0 +1,109 @@
+# Release automation: on a pushed `v*` tag, publish to npm and bump the
+# Homebrew tap to the new version. Driven entirely off package.json's version.
+#
+# Per-release flow (from a clean main):
+#   pnpm version patch        # bumps package.json + creates a vX.Y.Z tag
+#   git push --follow-tags    # pushes the commit + tag -> triggers this workflow
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   NPM_TOKEN         npm granular access token, read+write on @atrivolabs,
+#                     with "Bypass 2FA" enabled. Stored in BWS as
+#                     npm/atrivolabs/publish-token.
+#   TAP_DEPLOY_TOKEN  GitHub fine-grained PAT (or classic) with Contents:
+#                     read+write on atrivolabs/homebrew-tap. The default
+#                     GITHUB_TOKEN can't push to a *different* repo, so the
+#                     tap bump needs its own token.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish-npm:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Verify tag matches package.json version
+        id: version
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+          echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  bump-tap:
+    needs: publish-npm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute tarball URL + SHA-256
+        id: tarball
+        run: |
+          VERSION="${{ needs.publish-npm.outputs.version }}"
+          URL="https://registry.npmjs.org/@atrivolabs/devflow/-/devflow-${VERSION}.tgz"
+          # The registry CDN can lag a few minutes behind a fresh publish, so
+          # retry until the tarball is fetchable (we saw ~4.5 min on first publish).
+          for i in $(seq 1 40); do
+            if curl -fsSL "$URL" -o pkg.tgz; then
+              echo "tarball available after ~$((i * 15))s"; break
+            fi
+            echo "tarball not ready, retry $i/40..."; sleep 15
+          done
+          test -s pkg.tgz || { echo "::error::tarball never became available"; exit 1; }
+          SHA=$(shasum -a 256 pkg.tgz | awk '{print $1}')
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: atrivolabs/homebrew-tap
+          token: ${{ secrets.TAP_DEPLOY_TOKEN }}
+          path: tap
+
+      - name: Update formula and push
+        run: |
+          VERSION="${{ needs.publish-npm.outputs.version }}"
+          URL='${{ steps.tarball.outputs.url }}'
+          SHA='${{ steps.tarball.outputs.sha }}'
+          F=tap/Formula/devflow.rb
+          # `|` delimiter so the URL's slashes don't need escaping.
+          sed -i -E "s|^  url \".*\"|  url \"${URL}\"|" "$F"
+          sed -i -E "s|^  sha256 \".*\"|  sha256 \"${SHA}\"|" "$F"
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/devflow.rb
+          if git diff --staged --quiet; then
+            echo "formula already up to date for ${VERSION}"
+            exit 0
+          fi
+          git commit -m "devflow ${VERSION}"
+          git push
