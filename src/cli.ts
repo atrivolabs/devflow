@@ -8,6 +8,7 @@ import { stopSession } from "./commands/stop.js";
 import { listChannelsCmd } from "./commands/channels.js";
 import { setupCmd } from "./commands/setup.js";
 import { musicCmd } from "./commands/music.js";
+import { statsCmd } from "./commands/stats.js";
 
 const program = new Command();
 
@@ -50,6 +51,11 @@ program
   .command("status")
   .description("Show current session info")
   .action(showStatus);
+
+program
+  .command("stats")
+  .description("Show your focus history — time, streak, top channel, completion")
+  .action(statsCmd);
 
 program
   .command("channels")
