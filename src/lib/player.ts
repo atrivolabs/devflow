@@ -8,8 +8,16 @@ import { which } from "./deps.js";
 
 export { checkDeps } from "./deps.js";
 
-let proc: ChildProcess | null = null;
+// Every mpv we've spawned that might still be alive — tracked as a set, not a
+// single handle, because play() is async (it awaits a binary lookup) and is
+// called from overlapping paths (the watchdog, channel-switch, revive). If we
+// only remembered the latest child, an earlier overlapping spawn could outlive
+// the session and keep playing after exit. stop() kills the whole set, so no
+// mpv can be orphaned.
+const procs = new Set<ChildProcess>();
+let proc: ChildProcess | null = null; // most recent, used as the IPC target
 let ipcPath: string | null = null;
+let mpvPath: string | null | undefined; // cached so the spawn path has no await
 
 export async function play(
   channel: Channel,
@@ -18,7 +26,10 @@ export async function play(
 ): Promise<boolean> {
   await stop();
 
-  const mpv = await which("mpv");
+  // Resolve mpv once and cache it: keeping the spawn synchronous after stop()
+  // shrinks the window where overlapping play() calls could double-spawn.
+  if (mpvPath === undefined) mpvPath = await which("mpv");
+  const mpv = mpvPath;
   if (!mpv) return false;
 
   // Pick a random YouTube ID so it's not always the same one
@@ -41,10 +52,16 @@ export async function play(
   if (ytdlpPath) args.push(`--script-opts=ytdl_hook-ytdl_path=${ytdlpPath}`);
   args.push(url);
 
-  proc = spawn(mpv, args, { stdio: "ignore" });
+  const child = spawn(mpv, args, { stdio: "ignore" });
+  procs.add(child);
+  proc = child;
 
-  proc.on("error", () => { proc = null; });
-  proc.on("exit", () => { proc = null; });
+  const forget = () => {
+    procs.delete(child);
+    if (proc === child) proc = null;
+  };
+  child.on("error", forget);
+  child.on("exit", forget);
 
   return true;
 }
@@ -80,10 +97,14 @@ export function setVolume(volume: number): void {
 }
 
 export async function stop(): Promise<void> {
-  if (proc && !proc.killed) {
-    proc.kill("SIGTERM");
-    proc = null;
+  // Kill every mpv we've spawned, not just the latest — this is what guarantees
+  // music can't outlive the session (see the note on `procs`). Synchronous, so
+  // it's effective even when cleanup() calls it right before process.exit().
+  for (const p of procs) {
+    if (!p.killed) p.kill("SIGTERM");
   }
+  procs.clear();
+  proc = null;
   if (ipcPath) {
     try {
       unlinkSync(ipcPath);

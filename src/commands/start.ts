@@ -290,8 +290,19 @@ export async function startSession(options: StartOptions): Promise<void> {
   // stays on Ctrl+C/Ctrl+D so a stray keystroke (wrong tmux pane) can't end a
   // session. Feedback is a dim status line, the same way the pause/music
   // handlers already report — the countdown resumes below it.
+  // Only advertise keys that actually do something in this mode. Free flow has
+  // no timer and no progress bar, so pause and the mascot don't apply there.
+  const timed = mode !== "free";
   const HINTS =
-    "keys: space pause · n channel · m mascot · v voice · +/- volume · ? help";
+    "keys: " +
+    [
+      ...(timed ? ["space pause"] : []),
+      "n channel",
+      ...(timed ? ["m mascot"] : []),
+      "v voice",
+      "+/- volume",
+      "? help",
+    ].join(" · ");
 
   function statusLine(text: string): void {
     // Commit the current countdown frame, print the status below it, and leave
