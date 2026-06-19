@@ -20,6 +20,13 @@ pnpm typecheck       # tsc --noEmit; the only "test" gate — there is no test s
 There are no unit tests, no linter, and no CI config in the repo. `pnpm typecheck`
 is the correctness check before committing.
 
+`package.json` pins `"packageManager": "pnpm@10.30.2"`, so if your `pnpm` is a
+Corepack shim (the default on recent Node), the first `pnpm` command in this repo
+may prompt `Corepack is about to download pnpm-10.30.2.tgz … continue? [Y/n]`.
+Answer `Y` once (it caches), or run `corepack install` up front. This is a
+contributor-only, build-toolchain prompt — it never reaches published-package
+users, who just run the bundled `dist/cli.js`.
+
 The fastest way to exercise runtime behavior end-to-end is `pnpm dev start --demo`,
 which runs an accelerated pomodoro (durations in seconds, not minutes) so music,
 transitions, cues, and the watchdog all fire within ~1 minute.
