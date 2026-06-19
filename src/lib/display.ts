@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import type { Phase, TimerState } from "./timer.js";
+import { mascotWidth, mascotFrame } from "./mascot.js";
 
 // Default/maximum bar width; the live bar shrinks below this to fit a narrow
 // terminal, and is dropped entirely when there isn't even room for BAR_MIN.
@@ -26,20 +27,13 @@ export function phaseLabel(phase: Phase): string {
   return PHASE_LABELS[phase](PHASE_NAMES[phase].padEnd(5));
 }
 
-// Optional monochrome runner (issue #15): a tiny side-view figure whose arm
-// pumps each tick while you focus, and stands still during a break. Always 2
-// columns wide. Frame advances off `remaining` so it's stateless (one step per
-// 1s tick). Off by default; opt-in via `--mascot` / config.
-const MASCOT_WIDTH = 2;
-const RUNNER_FRAMES = ["o/", "o-", "o\\", "o-"];
-const RUNNER_STILL = "o-";
-
+// Optional mascot (issue #15): a tiny figure that animates while you focus and
+// rests during a break. The character/size live in ./mascot.ts (data-driven and
+// swappable) — this just dims it and advances the frame off `remaining` so it's
+// stateless (one step per 1s tick). Off by default; opt-in via `--mascot`.
 function mascotGlyph(state: TimerState): string {
   const resting = state.phase === "break" || state.phase === "long-break" || state.paused;
-  const glyph = resting
-    ? RUNNER_STILL
-    : RUNNER_FRAMES[state.remaining % RUNNER_FRAMES.length];
-  return chalk.dim(glyph);
+  return chalk.dim(mascotFrame(state.remaining, resting));
 }
 
 export function progressBar(remaining: number, total: number, width = BAR_WIDTH): string {
@@ -71,9 +65,9 @@ export function tickLine(
     state.phase === "work" ? state.pomodoroCount + 1 : state.pomodoroCount;
   const pomText = num > 0 ? ` #${num}` : "";
 
-  // Optional runner prefix: "<glyph> " => MASCOT_WIDTH + 1 columns.
+  // Optional mascot prefix: "<glyph> " => mascot width + 1 column for the space.
   const prefix = mascot ? `${mascotGlyph(state)} ` : "";
-  const pw = mascot ? MASCOT_WIDTH + 1 : 0;
+  const pw = mascot ? mascotWidth() + 1 : 0;
 
   // Transient hotkey feedback ("volume 45", "mascot on") shown dim at the right
   // of the live line. start.ts redraws this in place, so it replaces the line
