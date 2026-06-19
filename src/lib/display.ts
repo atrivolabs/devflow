@@ -57,7 +57,12 @@ export function progressBar(remaining: number, total: number, width = BAR_WIDTH)
   );
 }
 
-export function tickLine(state: TimerState, time: string, mascot = false): void {
+export function tickLine(
+  state: TimerState,
+  time: string,
+  mascot = false,
+  status = ""
+): void {
   const label = phaseLabel(state.phase); // styled, but 5 columns wide
   // Show the pomodoro you're on. pomodoroCount tracks *completed* work blocks,
   // so during work the current block is count + 1; a break belongs to the
@@ -70,24 +75,31 @@ export function tickLine(state: TimerState, time: string, mascot = false): void 
   const prefix = mascot ? `${mascotGlyph(state)} ` : "";
   const pw = mascot ? MASCOT_WIDTH + 1 : 0;
 
+  // Transient hotkey feedback ("volume 45", "mascot on") shown dim at the right
+  // of the live line. start.ts redraws this in place, so it replaces the line
+  // rather than scrolling the session. Reserve its width (" · " + text) so the
+  // line still never wraps.
+  const tail = status ? chalk.dim(` · ${status}`) : "";
+  const sw = status ? status.length + 3 : 0;
+
   // Size the bar to the terminal so the line never exceeds one physical row —
   // otherwise it soft-wraps and the leading `\r` can't overwrite the wrapped
   // remainder, scrolling the pane every tick (esp. small tmux splits). Reason
   // in *visible* columns, not string length: chalk's ANSI codes add bytes but
-  // no width. Layout: "  " + prefix + label(5) + " " + [bar] + " " + time + pom + " ".
+  // no width. Layout: "  " + prefix + label(5) + " " + [bar] + " " + time + pom + " " + status.
   const cols = process.stdout.columns || 80;
-  const fixed = 2 + pw + 5 + 1 + 1 + time.length + pomText.length + 1;
+  const fixed = 2 + pw + 5 + 1 + 1 + time.length + pomText.length + 1 + sw;
   const barBudget = cols - fixed - 2; // -2 for the bar's "[" and "]"
 
   let line: string;
   if (barBudget >= BAR_MIN) {
     const bar = progressBar(state.remaining, state.total, Math.min(BAR_WIDTH, barBudget));
-    line = `  ${prefix}${label} ${bar} ${chalk.bold(time)}${chalk.dim(pomText)} `;
-  } else if (2 + pw + 5 + 1 + time.length <= cols) {
+    line = `  ${prefix}${label} ${bar} ${chalk.bold(time)}${chalk.dim(pomText)}${tail} `;
+  } else if (2 + pw + 5 + 1 + time.length + sw <= cols) {
     // Too narrow for a bar: label + time, dropping the pomodoro tag if even that
     // wouldn't fit.
-    const pom = 2 + pw + 5 + 1 + time.length + pomText.length <= cols ? chalk.dim(pomText) : "";
-    line = `  ${prefix}${label} ${chalk.bold(time)}${pom}`;
+    const pom = 2 + pw + 5 + 1 + time.length + pomText.length + sw <= cols ? chalk.dim(pomText) : "";
+    line = `  ${prefix}${label} ${chalk.bold(time)}${pom}${tail}`;
   } else {
     // Pathologically narrow (< ~13 cols): just the clock, truncated so even this
     // can never wrap.

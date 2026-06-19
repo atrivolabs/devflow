@@ -304,10 +304,32 @@ export async function startSession(options: StartOptions): Promise<void> {
       "? help",
     ].join(" · ");
 
-  function statusLine(text: string): void {
-    // Commit the current countdown frame, print the status below it, and leave
-    // the cursor on a fresh line so the live countdown resumes underneath.
-    process.stdout.write(`\n\r  ${chalk.dim(text)}\n\r`);
+  // Transient hotkey feedback. Rendered *in place* — appended to the live
+  // countdown in a timed mode, or on its own redrawn line in free flow — so
+  // pressing keys updates the session instead of scrolling it. It clears a
+  // couple seconds after the last keypress (timed modes redraw on the next
+  // ticks; see `render`).
+  const FLASH_MS = 2500;
+  let lastState: TimerState | undefined;
+  let flashText = "";
+  let flashUntil = 0;
+
+  function render(): void {
+    const status = Date.now() < flashUntil ? flashText : "";
+    if (lastState) {
+      const s = lastState;
+      ui.tickLine(s, fmt(s.remaining > 0 ? s.remaining : s.total), mascot, status);
+    } else if (status) {
+      // Free flow has no live countdown — show the flash on its own in-place
+      // line so it replaces rather than scrolls.
+      process.stdout.write(`\r\x1b[K  ${chalk.dim(status)}`);
+    }
+  }
+
+  function flash(text: string): void {
+    flashText = text;
+    flashUntil = Date.now() + FLASH_MS;
+    render();
   }
 
   function togglePause(): void {
@@ -316,10 +338,10 @@ export async function startSession(options: StartOptions): Promise<void> {
     if (activeTimer.snapshot().paused) {
       wantMusic = false;
       if (musicOk && playing()) pauseMusic();
-      statusLine("⏸  paused");
+      flash("⏸  paused");
     } else {
       reviveMusic();
-      statusLine("▶  resumed");
+      flash("▶  resumed");
     }
   }
 
@@ -332,13 +354,13 @@ export async function startSession(options: StartOptions): Promise<void> {
       startHeartbeat(channel.id);
       if (wantMusic) restartMusic(); // play() stops the old stream first
     }
-    statusLine(`${channel.icon} ${channel.name}`);
+    flash(`${channel.icon} ${channel.name}`);
   }
 
   function adjustVolume(delta: number): void {
     musicVolume = Math.max(0, Math.min(100, musicVolume + delta));
     setVolume(musicVolume);
-    statusLine(`volume ${musicVolume}`);
+    flash(`volume ${musicVolume}`);
   }
 
   function handleKey(key: string): void {
@@ -351,11 +373,11 @@ export async function startSession(options: StartOptions): Promise<void> {
       case "m":
       case "M":
         mascot = !mascot;
-        return statusLine(`mascot ${mascot ? "on" : "off"}`);
+        return flash(`mascot ${mascot ? "on" : "off"}`);
       case "v":
       case "V":
         voice = !voice;
-        return statusLine(`voice ${voice ? "on" : "off"}`);
+        return flash(`voice ${voice ? "on" : "off"}`);
       case "+":
       case "=":
         return adjustVolume(5);
@@ -363,7 +385,7 @@ export async function startSession(options: StartOptions): Promise<void> {
       case "_":
         return adjustVolume(-5);
       case "?":
-        return statusLine(HINTS);
+        return flash(HINTS);
       // anything else is swallowed — not echoed, not acted on
     }
   }
@@ -404,9 +426,10 @@ export async function startSession(options: StartOptions): Promise<void> {
 
     // While counting, show time remaining; once a phase completes, show its
     // total duration so the finished line reads as a log of how long it was.
-    timer.on("tick", (state: TimerState) =>
-      ui.tickLine(state, fmt(state.remaining > 0 ? state.remaining : state.total), mascot)
-    );
+    timer.on("tick", (state: TimerState) => {
+      lastState = state;
+      render();
+    });
 
     // Proactive heads-up before a transition. Audible only — no printed line,
     // which would interrupt the live countdown (it redraws in place with \r).
