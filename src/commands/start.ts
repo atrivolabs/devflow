@@ -19,6 +19,8 @@ import * as session from "../lib/session.js";
 import * as history from "../lib/history.js";
 import * as ui from "../lib/display.js";
 import { startHeartbeat, stopHeartbeat } from "../lib/listener.js";
+import { buildContext, submitFeedback } from "../lib/feedback.js";
+import { createInterface } from "node:readline";
 
 interface StartOptions {
   channel?: string;
@@ -301,6 +303,7 @@ export async function startSession(options: StartOptions): Promise<void> {
       ...(timed ? ["m mascot"] : []),
       "v voice",
       "+/- volume",
+      "f feedback",
       "? help",
     ].join(" · ");
 
@@ -313,8 +316,12 @@ export async function startSession(options: StartOptions): Promise<void> {
   let lastState: TimerState | undefined;
   let flashText = "";
   let flashUntil = 0;
+  // True while the feedback hotkey is reading a line: suspends the in-place
+  // redraw so the timer tick doesn't clobber the prompt the user is typing.
+  let capturing = false;
 
   function render(): void {
+    if (capturing) return;
     const status = Date.now() < flashUntil ? flashText : "";
     if (lastState) {
       const s = lastState;
@@ -384,20 +391,75 @@ export async function startSession(options: StartOptions): Promise<void> {
       case "-":
       case "_":
         return adjustVolume(-5);
+      case "f":
+      case "F":
+        return void captureFeedback();
       case "?":
         return flash(HINTS);
       // anything else is swallowed — not echoed, not acted on
     }
   }
 
+  // Quick in-session bug report. Suspends the raw-mode key handling + live
+  // redraw, drops to a normal one-line read, submits best-effort, then restores
+  // — the timer and music keep running throughout. Entirely best-effort: any
+  // failure here must never crash or corrupt the session.
+  async function captureFeedback(): Promise<void> {
+    if (capturing || !rawInput) return;
+    capturing = true;
+    try {
+      stdin.off("data", onData);
+      stdin.setRawMode(false);
+      process.stdout.write("\n"); // step off the live countdown line
+      const msg = await readLine(
+        chalk.dim("  feedback (one line, blank to cancel): ")
+      );
+      if (!msg) {
+        flash("feedback cancelled");
+        return;
+      }
+      const result = await submitFeedback(msg, buildContext());
+      flash(
+        result.ok
+          ? "✓ feedback sent"
+          : "couldn't send — try `devflow feedback`"
+      );
+    } catch {
+      // never let feedback break the session
+    } finally {
+      try {
+        stdin.setRawMode(true);
+        stdin.resume();
+      } catch {
+        // terminal may be gone — nothing more to do
+      }
+      stdin.on("data", onData);
+      capturing = false;
+    }
+  }
+
+  // One-line read over the owner's stdin, used by the feedback hotkey while raw
+  // mode is temporarily off.
+  function readLine(prompt: string): Promise<string> {
+    return new Promise((resolve) => {
+      const rl = createInterface({ input: stdin, output: process.stdout });
+      rl.question(prompt, (answer) => {
+        rl.close();
+        resolve(answer.trim());
+      });
+    });
+  }
+
+  const onData = (buf: Buffer): void => {
+    const key = buf.toString();
+    if (key === "\x03" || key === "\x04") return cleanup(); // Ctrl+C / Ctrl+D
+    handleKey(key);
+  };
+
   if (rawInput) {
     stdin.setRawMode(true);
     stdin.resume();
-    stdin.on("data", (buf: Buffer) => {
-      const key = buf.toString();
-      if (key === "\x03" || key === "\x04") return cleanup(); // Ctrl+C / Ctrl+D
-      handleKey(key);
-    });
+    stdin.on("data", onData);
     // Safety net: restore the terminal even on an unexpected exit.
     process.on("exit", () => {
       try {
