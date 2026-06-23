@@ -66,6 +66,22 @@ devflow start  ─►  mpv --no-video <youtube-url>
 `mpv` is invoked with `--no-video`, so it decodes only the audio track and
 discards video — even when YouTube serves only muxed (audio+video) streams.
 
+### Audio output device
+
+By default music goes to the system default output device. To force a specific
+device (e.g. always your headphones, not the monitor speakers):
+
+```sh
+devflow devices                              # list the names mpv can see
+devflow start --audio-device <name>          # one session
+devflow setup                                # set it as your default
+```
+
+The chosen name is passed straight to mpv's `--audio-device`. If that device
+isn't available at start (headphones unplugged), mpv falls back to the system
+default on its own — music never hard-fails. Leave it blank / "system" /
+"auto" to always follow the OS default.
+
 ### deno
 
 Current `yt-dlp` versions use [deno](https://deno.com) to solve YouTube's

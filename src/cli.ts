@@ -8,6 +8,7 @@ import { stopSession } from "./commands/stop.js";
 import { listChannelsCmd } from "./commands/channels.js";
 import { setupCmd } from "./commands/setup.js";
 import { musicCmd } from "./commands/music.js";
+import { devicesCmd } from "./commands/devices.js";
 import { statsCmd } from "./commands/stats.js";
 import { feedbackCmd } from "./commands/feedback.js";
 
@@ -28,6 +29,7 @@ program
   .option("--work <minutes>", "Work block duration")
   .option("--break <minutes>", "Short break duration")
   .option("--long-break <minutes>", "Long break duration")
+  .option("--audio-device <name>", "Audio output device (run `devflow devices` to list; default: system)")
   .option("--no-music", "Timer only, no music")
   .option("--demo", "Accelerated pomodoro (seconds, not minutes) to preview music + transitions")
   .option("--voice", "Speak transitions aloud (work / break / complete)")
@@ -64,6 +66,11 @@ program
   .command("channels")
   .description("List available music channels")
   .action(listChannelsCmd);
+
+program
+  .command("devices")
+  .description("List audio output devices (for --audio-device / setup)")
+  .action(devicesCmd);
 
 program
   .command("setup")

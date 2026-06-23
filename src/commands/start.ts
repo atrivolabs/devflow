@@ -32,6 +32,7 @@ interface StartOptions {
   demo?: boolean;
   voice?: boolean;
   mascot?: boolean;
+  audioDevice?: string;
 }
 
 export async function startSession(options: StartOptions): Promise<void> {
@@ -83,6 +84,8 @@ export async function startSession(options: StartOptions): Promise<void> {
   let mascot = options.mascot ?? cfg.mascot;
   let musicVolume = cfg.musicVolume;
   const cueVolume = cfg.cueVolume;
+  // Audio output device: explicit flag > config > system default ("").
+  const audioDevice = options.audioDevice ?? cfg.audioDevice;
   const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
 
   // Take over the screen (alternate buffer) now that every early-exit check
@@ -164,10 +167,11 @@ export async function startSession(options: StartOptions): Promise<void> {
     } else {
       // Write without a newline so we can clear it once the stream resolves.
       process.stdout.write(chalk.dim("  loading stream…"));
-      musicOk = await play(channel, musicVolume, ytdlpPath);
+      musicOk = await play(channel, musicVolume, ytdlpPath, audioDevice);
       process.stdout.write("\r\x1b[K");
       if (musicOk) {
-        console.log(chalk.dim(`  ${channel.icon} playing ${channel.name}`));
+        const where = audioDevice ? chalk.dim(` → ${audioDevice}`) : "";
+        console.log(chalk.dim(`  ${channel.icon} playing ${channel.name}`) + where);
         startHeartbeat(channel.id);
       } else {
         console.log(chalk.dim("  stream unavailable — continuing without music"));
@@ -188,7 +192,7 @@ export async function startSession(options: StartOptions): Promise<void> {
   let watchdog: ReturnType<typeof setInterval> | null = null;
 
   const restartMusic = () => {
-    void play(channel, musicVolume, ytdlpPath); // fire-and-forget; fresh track
+    void play(channel, musicVolume, ytdlpPath, audioDevice); // fire-and-forget; fresh track
     musicSpawnAt = Date.now();
   };
 
