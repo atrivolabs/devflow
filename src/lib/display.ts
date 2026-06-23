@@ -107,7 +107,7 @@ export function tickLine(
 
 export function header(lines: string[]): void {
   console.log();
-  console.log(chalk.bold("  devflow") + chalk.dim("  ·  atrivolabs.com"));
+  console.log(chalk.bold("  devflow"));
   console.log(chalk.dim("  ─────────────────────────────"));
   lines.forEach((l) => console.log(`  ${l}`));
 }
