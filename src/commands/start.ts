@@ -358,7 +358,6 @@ export async function startSession(options: StartOptions): Promise<void> {
       "v voice",
       "+/- volume",
       "f feedback",
-      "? help",
     ].join(" · ");
 
   // Transient hotkey feedback. Rendered *in place* — appended to the live
@@ -483,8 +482,6 @@ export async function startSession(options: StartOptions): Promise<void> {
       case "f":
       case "F":
         return void captureFeedback();
-      case "?":
-        return flash(HINTS);
       // anything else is swallowed — not echoed, not acted on
     }
   }
