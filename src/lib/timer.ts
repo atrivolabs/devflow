@@ -60,6 +60,11 @@ export class Timer extends EventEmitter {
         if (lead > 0 && this.state.remaining === lead && this.state.total >= 2 * lead) {
           this.emit("warning", this.snapshot());
         }
+        // Extra heads-up for longer sessions, independent of the standard lead.
+        const early = this.earlyLeadSeconds();
+        if (early > 0 && early !== lead && this.state.remaining === early) {
+          this.emit("warning", this.snapshot());
+        }
       } else {
         this.advance();
       }
@@ -141,6 +146,17 @@ export class Timer extends EventEmitter {
     this.state.phase = phase;
     this.state.total = seconds;
     this.state.remaining = seconds;
+  }
+
+  /** A second, earlier heads-up for long sessions so the standard short lead
+   *  isn't the only warning: 5 min before the end of a session longer than
+   *  20 min, or 10 min before the end of one longer than 40 min. Scaled by
+   *  unitSeconds so it also fires (in seconds) under demo mode. 0 = none. */
+  private earlyLeadSeconds(): number {
+    const unit = this.config.unitSeconds ?? 60;
+    if (this.state.total > 40 * unit) return 10 * unit;
+    if (this.state.total > 20 * unit) return 5 * unit;
+    return 0;
   }
 
   private phaseSeconds(phase: Phase): number {
