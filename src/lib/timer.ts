@@ -72,6 +72,31 @@ export class Timer extends EventEmitter {
     this.emit(this.state.paused ? "pause" : "resume", this.snapshot());
   }
 
+  /** Current target number of work blocks; undefined = run forever. */
+  get rounds(): number | undefined {
+    return this.config.rounds;
+  }
+
+  /**
+   * Change the round target mid-session (pomodoro only). The new value is
+   * floored at `pomodoroCount + 1` so you can shorten a session down to "stop
+   * after the current/next work block" but never below blocks already done.
+   * Decreasing from unlimited locks in that floor; increasing from unlimited
+   * stays unlimited. Returns the new target (undefined = unlimited).
+   */
+  adjustRounds(delta: number): number | undefined {
+    if (this.config.mode !== "pomodoro") return this.config.rounds;
+    const floor = this.state.pomodoroCount + 1;
+    if (this.config.rounds === undefined) {
+      if (delta < 0) this.config.rounds = floor; // unlimited -> concrete target
+      // increasing stays unlimited
+    } else {
+      const next = this.config.rounds + delta;
+      this.config.rounds = next < floor ? floor : next;
+    }
+    return this.config.rounds;
+  }
+
   stop() {
     if (this.interval) clearInterval(this.interval);
     this.interval = null;

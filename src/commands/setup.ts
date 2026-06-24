@@ -3,6 +3,7 @@ import { createInterface, type Interface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { channels } from "../lib/channels.js";
 import { loadConfig, saveConfig, configPath, parseHHMM, type Config } from "../lib/config.js";
+import { listAudioDevices } from "../lib/player.js";
 
 export async function setupCmd(): Promise<void> {
   if (!stdin.isTTY) {
@@ -100,6 +101,13 @@ export async function setupCmd(): Promise<void> {
         chalk.dim(" — refuse to start a new sprint after this time. blank = off.")
     );
     const hardStop = await askTime(rl, "  hard stop (HH:MM)", cur.hardStop);
+    // Audio output device
+    console.log(
+      "\n" +
+        chalk.cyan("  Audio output") +
+        chalk.dim(" — where music plays; blank = system default.")
+    );
+    const audioDevice = await askAudioDevice(rl, "  audio device", cur.audioDevice);
 
     const cfg: Config = {
       channel,
@@ -115,6 +123,8 @@ export async function setupCmd(): Promise<void> {
       cueVolume,
       enforce,
       hardStop,
+      profiles: cur.profiles, // setup doesn't edit profiles — preserve any from config
+      audioDevice,
     };
     saveConfig(cfg);
 
@@ -189,6 +199,28 @@ async function askTime(
     if (parseHHMM(a) !== null) return a;
     console.log(chalk.red("    enter a time as HH:MM (24h), or 'off'"));
   }
+async function askAudioDevice(
+  rl: Interface,
+  label: string,
+  def: string
+): Promise<string> {
+  const devices = await listAudioDevices();
+  if (devices.length) {
+    console.log(chalk.dim("    available:"));
+    for (const d of devices) {
+      console.log(
+        chalk.dim(`      ${d.name}${d.description ? ` — ${d.description}` : ""}`)
+      );
+    }
+  } else {
+    console.log(chalk.dim("    (mpv not found or no devices — leave blank for system default)"));
+  }
+  const shown = def || "system default";
+  const a = (await rl.question(`${label} [${shown}]: `)).trim();
+  if (!a) return def;
+  // Accept common words for "let the OS decide" → store as "" (no flag passed).
+  if (/^(system|default|auto|none)$/i.test(a)) return "";
+  return a;
 }
 
 async function askBool(rl: Interface, label: string, def: boolean): Promise<boolean> {
