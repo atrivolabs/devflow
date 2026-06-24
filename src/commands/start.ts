@@ -335,12 +335,18 @@ export async function startSession(options: StartOptions): Promise<void> {
   function togglePause(): void {
     if (!activeTimer) return; // free flow has no timer to pause
     activeTimer.togglePause();
-    if (activeTimer.snapshot().paused) {
+    const snap = activeTimer.snapshot();
+    if (snap.paused) {
       wantMusic = false;
       if (musicOk && playing()) pauseMusic();
       flash("⏸  paused");
     } else {
-      reviveMusic();
+      // Only bring music back if we're resuming into a phase that should have
+      // it. Breaks are intentionally silent, so unpausing mid-break must not
+      // revive music (that was the surprising bug). Use `devflow music` (or the
+      // watchdog) to force audio back during a break.
+      const onBreak = snap.phase === "break" || snap.phase === "long-break";
+      if (!onBreak) reviveMusic();
       flash("▶  resumed");
     }
   }
