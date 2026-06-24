@@ -26,6 +26,8 @@ import * as session from "../lib/session.js";
 import * as history from "../lib/history.js";
 import * as ui from "../lib/display.js";
 import { startHeartbeat, stopHeartbeat } from "../lib/listener.js";
+import { buildContext, submitFeedback } from "../lib/feedback.js";
+import { createInterface } from "node:readline";
 
 interface StartOptions {
   channel?: string;
@@ -40,6 +42,7 @@ interface StartOptions {
   demo?: boolean;
   voice?: boolean;
   mascot?: boolean;
+  audioDevice?: string;
 }
 
 export async function startSession(options: StartOptions): Promise<void> {
@@ -105,6 +108,8 @@ export async function startSession(options: StartOptions): Promise<void> {
   let mascot = options.mascot ?? cfg.mascot;
   let musicVolume = cfg.musicVolume;
   const cueVolume = cfg.cueVolume;
+  // Audio output device: explicit flag > config > system default ("").
+  const audioDevice = options.audioDevice ?? cfg.audioDevice;
   const mode = pomodoro ? "pomodoro" : countdown ? "countdown" : "free";
 
   // Take over the screen (alternate buffer) now that every early-exit check
@@ -186,10 +191,11 @@ export async function startSession(options: StartOptions): Promise<void> {
     } else {
       // Write without a newline so we can clear it once the stream resolves.
       process.stdout.write(chalk.dim("  loading stream…"));
-      musicOk = await play(channel, musicVolume, ytdlpPath);
+      musicOk = await play(channel, musicVolume, ytdlpPath, audioDevice);
       process.stdout.write("\r\x1b[K");
       if (musicOk) {
-        console.log(chalk.dim(`  ${channel.icon} playing ${channel.name}`));
+        const where = audioDevice ? chalk.dim(` → ${audioDevice}`) : "";
+        console.log(chalk.dim(`  ${channel.icon} playing ${channel.name}`) + where);
         startHeartbeat(channel.id);
       } else {
         console.log(chalk.dim("  stream unavailable — continuing without music"));
@@ -210,7 +216,7 @@ export async function startSession(options: StartOptions): Promise<void> {
   let watchdog: ReturnType<typeof setInterval> | null = null;
 
   const restartMusic = () => {
-    void play(channel, musicVolume, ytdlpPath); // fire-and-forget; fresh track
+    void play(channel, musicVolume, ytdlpPath, audioDevice); // fire-and-forget; fresh track
     musicSpawnAt = Date.now();
   };
 
@@ -283,7 +289,8 @@ export async function startSession(options: StartOptions): Promise<void> {
     // Log the finished session to local history (powers `devflow stats`). Demo
     // runs are previews, not real focus, so they're never recorded. Skip
     // sub-minute sessions to avoid noise.
-    if (!demo && focusMinutes >= 1) {
+    const logged = !demo && focusMinutes >= 1;
+    if (logged) {
       history.record({
         timestamp: new Date().toISOString(),
         mode,
@@ -302,7 +309,7 @@ export async function startSession(options: StartOptions): Promise<void> {
     // session.
     ui.exitFullscreen();
     console.log(
-      sessionSummary(completed, focusMinutes, mode, poms, withMusic ? channel.name : null)
+      sessionSummary(completed, focusMinutes, mode, poms, withMusic ? channel.name : null, logged)
     );
     process.exit(0);
   };
@@ -315,14 +322,17 @@ export async function startSession(options: StartOptions): Promise<void> {
   // Only advertise keys that actually do something in this mode. Free flow has
   // no timer and no progress bar, so pause and the mascot don't apply there.
   const timed = mode !== "free";
+  const pomo = mode === "pomodoro";
   const HINTS =
     "keys: " +
     [
       ...(timed ? ["space pause"] : []),
       "n channel",
+      ...(pomo ? ["[/] rounds"] : []),
       ...(timed ? ["m mascot"] : []),
       "v voice",
       "+/- volume",
+      "f feedback",
       "? help",
     ].join(" · ");
 
@@ -335,8 +345,12 @@ export async function startSession(options: StartOptions): Promise<void> {
   let lastState: TimerState | undefined;
   let flashText = "";
   let flashUntil = 0;
+  // True while the feedback hotkey is reading a line: suspends the in-place
+  // redraw so the timer tick doesn't clobber the prompt the user is typing.
+  let capturing = false;
 
   function render(): void {
+    if (capturing) return;
     const status = Date.now() < flashUntil ? flashText : "";
     if (lastState) {
       const s = lastState;
@@ -357,12 +371,18 @@ export async function startSession(options: StartOptions): Promise<void> {
   function togglePause(): void {
     if (!activeTimer) return; // free flow has no timer to pause
     activeTimer.togglePause();
-    if (activeTimer.snapshot().paused) {
+    const snap = activeTimer.snapshot();
+    if (snap.paused) {
       wantMusic = false;
       if (musicOk && playing()) pauseMusic();
       flash("⏸  paused");
     } else {
-      reviveMusic();
+      // Only bring music back if we're resuming into a phase that should have
+      // it. Breaks are intentionally silent, so unpausing mid-break must not
+      // revive music (that was the surprising bug). Use `devflow music` (or the
+      // watchdog) to force audio back during a break.
+      const onBreak = snap.phase === "break" || snap.phase === "long-break";
+      if (!onBreak) reviveMusic();
       flash("▶  resumed");
     }
   }
@@ -385,6 +405,20 @@ export async function startSession(options: StartOptions): Promise<void> {
     flash(`volume ${musicVolume}`);
   }
 
+  function changeRounds(delta: number): void {
+    if (!activeTimer || !pomo) return; // rounds only apply to pomodoro
+    const next = activeTimer.adjustRounds(delta);
+    // Keep the session file (and so `devflow status`) in step with the change.
+    const s = session.load();
+    if (s) session.save({ ...s, rounds: next });
+    const done = activeTimer.snapshot().pomodoroCount;
+    flash(
+      next === undefined
+        ? "rounds: unlimited"
+        : `rounds: ${next} (${done} done)`
+    );
+  }
+
   function handleKey(key: string): void {
     switch (key) {
       case " ":
@@ -392,6 +426,10 @@ export async function startSession(options: StartOptions): Promise<void> {
       case "n":
       case "N":
         return cycleChannel();
+      case "[":
+        return changeRounds(-1);
+      case "]":
+        return changeRounds(1);
       case "m":
       case "M":
         mascot = !mascot;
@@ -406,20 +444,75 @@ export async function startSession(options: StartOptions): Promise<void> {
       case "-":
       case "_":
         return adjustVolume(-5);
+      case "f":
+      case "F":
+        return void captureFeedback();
       case "?":
         return flash(HINTS);
       // anything else is swallowed — not echoed, not acted on
     }
   }
 
+  // Quick in-session bug report. Suspends the raw-mode key handling + live
+  // redraw, drops to a normal one-line read, submits best-effort, then restores
+  // — the timer and music keep running throughout. Entirely best-effort: any
+  // failure here must never crash or corrupt the session.
+  async function captureFeedback(): Promise<void> {
+    if (capturing || !rawInput) return;
+    capturing = true;
+    try {
+      stdin.off("data", onData);
+      stdin.setRawMode(false);
+      process.stdout.write("\n"); // step off the live countdown line
+      const msg = await readLine(
+        chalk.dim("  feedback (one line, blank to cancel): ")
+      );
+      if (!msg) {
+        flash("feedback cancelled");
+        return;
+      }
+      const result = await submitFeedback(msg, buildContext());
+      flash(
+        result.ok
+          ? "✓ feedback sent"
+          : "couldn't send — try `devflow feedback`"
+      );
+    } catch {
+      // never let feedback break the session
+    } finally {
+      try {
+        stdin.setRawMode(true);
+        stdin.resume();
+      } catch {
+        // terminal may be gone — nothing more to do
+      }
+      stdin.on("data", onData);
+      capturing = false;
+    }
+  }
+
+  // One-line read over the owner's stdin, used by the feedback hotkey while raw
+  // mode is temporarily off.
+  function readLine(prompt: string): Promise<string> {
+    return new Promise((resolve) => {
+      const rl = createInterface({ input: stdin, output: process.stdout });
+      rl.question(prompt, (answer) => {
+        rl.close();
+        resolve(answer.trim());
+      });
+    });
+  }
+
+  const onData = (buf: Buffer): void => {
+    const key = buf.toString();
+    if (key === "\x03" || key === "\x04") return cleanup(); // Ctrl+C / Ctrl+D
+    handleKey(key);
+  };
+
   if (rawInput) {
     stdin.setRawMode(true);
     stdin.resume();
-    stdin.on("data", (buf: Buffer) => {
-      const key = buf.toString();
-      if (key === "\x03" || key === "\x04") return cleanup(); // Ctrl+C / Ctrl+D
-      handleKey(key);
-    });
+    stdin.on("data", onData);
     // Safety net: restore the terminal even on an unexpected exit.
     process.on("exit", () => {
       try {
@@ -537,15 +630,19 @@ function focusSecondsOf(
   return seconds;
 }
 
-// A compact one-line recap printed to the real terminal after the session
-// (and the alt screen) is torn down, so there's a trace left behind:
-//   ✓ done · 1h 15m focused · 3 pomodoros · lo-fi
+// A compact recap printed to the real terminal after the session (and the alt
+// screen) is torn down, so there's a trace left behind:
+//   ✓ session complete · 1h 15m focused · 3 pomodoros · lo-fi
+//   logged — run devflow stats to see your history
+// When the session was logged, a second line points to `devflow stats` so the
+// user knows their focus was recorded and how to review it.
 function sessionSummary(
   completed: boolean,
   focusMinutes: number,
   mode: "pomodoro" | "countdown" | "free",
   pomodoros: number,
-  channelName: string | null
+  channelName: string | null,
+  logged: boolean
 ): string {
   const parts: string[] = [];
   if (focusMinutes >= 1) parts.push(`${fmtDuration(focusMinutes)} focused`);
@@ -553,9 +650,17 @@ function sessionSummary(
     parts.push(`${pomodoros} ${pomodoros === 1 ? "pomodoro" : "pomodoros"}`);
   }
   if (channelName) parts.push(channelName);
-  const head = completed ? "✓ done" : "stopped";
+  const head = completed ? "✓ session complete" : "session stopped";
   const tail = parts.length ? "  ·  " + parts.join("  ·  ") : "";
-  return "\n  " + chalk.dim(head + tail);
+  let out = "\n  " + chalk.dim(head + tail);
+  if (logged) {
+    out +=
+      "\n  " +
+      chalk.dim("logged — run ") +
+      chalk.bold("devflow stats") +
+      chalk.dim(" to see your history");
+  }
+  return out + "\n";
 }
 
 function fmtDuration(minutes: number): string {

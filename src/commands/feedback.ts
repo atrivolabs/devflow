@@ -1,124 +1,119 @@
 import chalk from "chalk";
-import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-import { release } from "node:os";
-import * as session from "../lib/session.js";
+import { createInterface } from "node:readline";
+import {
+  buildContext,
+  describeContext,
+  submitFeedback,
+  buildIssueUrl,
+  tryOpen,
+  type FeedbackContext,
+} from "../lib/feedback.js";
 
-// Where reports land. Public repo, so an anonymous user can file directly.
-const ISSUES_NEW = "https://github.com/atrivolabs/devflow/issues/new";
-
-// For now feedback is browser-based: we build a pre-filled GitHub "new issue"
-// URL (environment auto-filled), print it, and try to open it. A true
-// no-browser, in-CLI submission flow needs a server endpoint and is tracked
-// separately in #17.
+// `devflow feedback` — a complete in-CLI bug/feedback submission flow. No
+// browser: we collect a multi-line message, show the anonymous context that
+// will be attached, confirm, and POST it to the server endpoint which files the
+// GitHub issue. If the endpoint is unreachable we fall back to a pre-filled
+// GitHub new-issue URL so feedback is never a dead end.
 export async function feedbackCmd(message: string[] = []): Promise<void> {
-  const summary = message.join(" ").trim();
-  const url = buildIssueUrl(summary);
-
   console.log();
   console.log(chalk.bold("  Report a bug or send feedback"));
-  console.log(
-    chalk.dim("  Opens a pre-filled GitHub issue (environment details included).")
-  );
   console.log();
+
+  // Pre-seed from any inline summary (`devflow feedback "music stops"`).
+  const seed = message.join(" ").trim();
+  console.log(
+    chalk.dim("  Describe the issue. Finish with an empty line (or Ctrl+D).")
+  );
+  if (seed) console.log(chalk.dim("  Starting from your summary; add detail or just submit.\n"));
+  else console.log();
+
+  const { body, confirmed } = await collect(seed);
+
+  if (!body) {
+    console.log(chalk.dim("\n  Nothing entered — cancelled.\n"));
+    return;
+  }
+  if (!confirmed) {
+    console.log(chalk.dim("\n  Cancelled — nothing sent.\n"));
+    return;
+  }
+
+  // Context is anonymous and deterministic for this run; rebuild it for the
+  // actual send (it's what the preview showed).
+  const context = buildContext();
+  process.stdout.write(chalk.dim("  submitting…"));
+  const result = await submitFeedback(body, context);
+  process.stdout.write("\r\x1b[K");
+
+  if (result.ok) {
+    console.log(chalk.green("  ✓ Thanks — your feedback was submitted."));
+    if (result.url) console.log("  " + chalk.cyan(result.url));
+    console.log();
+    return;
+  }
+
+  // Endpoint unreachable — fall back to a pre-filled GitHub issue URL.
+  const url = buildIssueUrl(body, context);
+  console.log(chalk.yellow("  Couldn't reach the feedback service."));
+  console.log(chalk.dim("  File it on GitHub instead (pre-filled):"));
   console.log("  " + chalk.cyan(url));
   console.log();
-  console.log(chalk.dim("  If your browser doesn't open, copy the link above.\n"));
-
   tryOpen(url);
 }
 
-// Compose a GitHub new-issue URL with the title/body/labels pre-filled. We
-// build the body ourselves (rather than selecting the bug_report template) so
-// the environment block comes in already filled from the running CLI.
-function buildIssueUrl(summary: string): string {
-  const active = session.active() ? session.load() : null;
-  const ctx = active
-    ? `\n\nReported from an active session — mode: ${active.mode}, channel: ${active.channel}.`
-    : "";
+// Drive the whole interaction over a single persistent `line` listener: collect
+// message lines until a blank line, print the preview, then read one more line
+// as the y/N confirmation. Using one listener (rather than closing/reopening
+// readline between reads) means no input buffered on a piped stdin is dropped.
+function collect(seed: string): Promise<{ body: string; confirmed: boolean }> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const lines: string[] = seed ? [seed] : [];
+    let phase: "message" | "confirm" = "message";
 
-  const body = [
-    "## What happened",
-    "",
-    summary || "<describe the problem>",
-    "",
-    "## What you expected",
-    "",
-    "",
-    "## Steps to reproduce",
-    "",
-    "1. Run `devflow ...`",
-    "2. ",
-    "",
-    "## Environment",
-    "",
-    `- OS: ${osName()} ${release()} (${process.arch})`,
-    `- devflow version: ${cliVersion()}`,
-    `- Node version: ${process.version}`,
-    "- `mpv --version` (if it's a music issue): ",
-    "- `yt-dlp --version` (if it's a music issue): ",
-    "",
-    "## Notes",
-    `${ctx.trim() || "Anything else — error output, whether `devflow start --demo` reproduces it, etc."}`,
-    "",
-  ].join("\n");
+    const finish = (confirmed: boolean) => {
+      rl.off("line", onLine);
+      rl.off("close", onClose);
+      rl.close();
+      resolve({ body: lines.join("\n").trim(), confirmed });
+    };
 
-  const params = new URLSearchParams({ labels: "bug", body });
-  if (summary) params.set("title", summary);
-  return `${ISSUES_NEW}?${params.toString()}`;
+    const onLine = (line: string) => {
+      if (phase === "message") {
+        if (line.trim() !== "") {
+          lines.push(line);
+          rl.prompt();
+          return;
+        }
+        // Blank line ends the message. Bail early if nothing was entered.
+        if (lines.join("\n").trim() === "") return finish(false);
+        showPreview(lines.join("\n").trim(), buildContext());
+        phase = "confirm";
+        rl.setPrompt("");
+        process.stdout.write(chalk.dim("  Send this? [y/N] "));
+        return;
+      }
+      // confirm phase: this line is the answer
+      finish(/^y(es)?$/i.test(line.trim()));
+    };
+    const onClose = () => finish(false);
+
+    rl.on("line", onLine);
+    rl.on("close", onClose);
+    rl.setPrompt(chalk.dim("  > "));
+    rl.prompt();
+  });
 }
 
-function osName(): string {
-  switch (process.platform) {
-    case "darwin":
-      return "macOS";
-    case "win32":
-      return "Windows";
-    case "linux":
-      return "Linux";
-    default:
-      return process.platform;
-  }
-}
-
-// Best-effort browser open across platforms. Never throws; if there's no
-// browser (headless / SSH), the printed URL is the fallback.
-function tryOpen(url: string): void {
-  let cmd: string;
-  let args: string[];
-  if (process.platform === "darwin") {
-    cmd = "open";
-    args = [url];
-  } else if (process.platform === "win32") {
-    cmd = "cmd";
-    args = ["/c", "start", "", url];
-  } else {
-    cmd = "xdg-open";
-    args = [url];
-  }
-  try {
-    const child = spawn(cmd, args, { stdio: "ignore", detached: true });
-    child.on("error", () => {}); // swallow ENOENT etc.
-    child.unref();
-  } catch {
-    // ignore — the URL was already printed
-  }
-}
-
-// Read the version from package.json at runtime, falling back gracefully.
-// Handles both the bundled layout (dist/cli.js → ../package.json) and running
-// from source (src/commands → ../../package.json).
-function cliVersion(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  for (const rel of ["../package.json", "../../package.json"]) {
-    try {
-      const pkg = JSON.parse(readFileSync(join(here, rel), "utf-8")) as { version?: string };
-      if (pkg.version) return pkg.version;
-    } catch {
-      // try the next candidate
-    }
-  }
-  return "0.0.0";
+// Show exactly what will be sent before submitting — anonymous context only.
+function showPreview(body: string, context: FeedbackContext): void {
+  console.log();
+  console.log(chalk.dim("  This will be sent:"));
+  console.log();
+  console.log(chalk.dim("  Message:"));
+  for (const line of body.split("\n")) console.log("    " + line);
+  console.log();
+  console.log(chalk.dim("  Context (anonymous):"));
+  for (const line of describeContext(context)) console.log(chalk.dim(line));
+  console.log();
 }

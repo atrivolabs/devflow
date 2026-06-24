@@ -26,6 +26,7 @@ export interface Config {
   musicVolume: number; // 0–100
   cueVolume: number; // 0–100, applies to transition sounds and voice
   profiles: Record<string, Profile>; // user-defined named cadence profiles
+  audioDevice: string; // mpv audio output device name; "" = system default
 }
 
 // Ships-with presets. Merged under any same-named profile from config.json, so
@@ -50,6 +51,7 @@ export const DEFAULTS: Config = {
   musicVolume: 40,
   cueVolume: 100,
   profiles: {},
+  audioDevice: "",
 };
 
 const CONFIG_FILE = join(DEVFLOW_DIR, "config.json");
@@ -83,6 +85,7 @@ function sanitize(raw: unknown): Config {
   const r = raw as Record<string, unknown>;
 
   if (typeof r.channel === "string" && r.channel.trim()) c.channel = r.channel.trim();
+  if (typeof r.audioDevice === "string") c.audioDevice = r.audioDevice.trim();
   if (typeof r.voice === "boolean") c.voice = r.voice;
   if (typeof r.mascot === "boolean") c.mascot = r.mascot;
 

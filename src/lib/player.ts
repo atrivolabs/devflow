@@ -22,7 +22,8 @@ let mpvPath: string | null | undefined; // cached so the spawn path has no await
 export async function play(
   channel: Channel,
   volume = 40,
-  ytdlpPath?: string
+  ytdlpPath?: string,
+  audioDevice?: string
 ): Promise<boolean> {
   await stop();
 
@@ -49,6 +50,10 @@ export async function play(
     `--volume=${volume}`,
     `--input-ipc-server=${ipcPath}`,
   ];
+  // Route audio to a chosen output device (e.g. headphones). When unset, mpv
+  // uses the system default. mpv falls back to the default on its own if the
+  // named device is gone (e.g. headphones unplugged), so this never hard-fails.
+  if (audioDevice) args.push(`--audio-device=${audioDevice}`);
   if (ytdlpPath) args.push(`--script-opts=ytdl_hook-ytdl_path=${ytdlpPath}`);
   args.push(url);
 
@@ -117,4 +122,37 @@ export async function stop(): Promise<void> {
 
 export function playing(): boolean {
   return proc !== null && !proc.killed;
+}
+
+export interface AudioDevice {
+  name: string; // pass to --audio-device / config.audioDevice
+  description: string; // human-readable label mpv reports
+}
+
+// Enumerate the audio output devices mpv can see (`mpv --audio-device=help`).
+// Best-effort: returns [] when mpv is missing or output can't be parsed.
+export async function listAudioDevices(): Promise<AudioDevice[]> {
+  const mpv = mpvPath !== undefined ? mpvPath : await which("mpv");
+  mpvPath = mpv;
+  if (!mpv) return [];
+
+  return new Promise((resolve) => {
+    const p = spawn(mpv, ["--audio-device=help"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let out = "";
+    p.stdout.on("data", (d) => {
+      out += d;
+    });
+    p.on("error", () => resolve([]));
+    p.on("close", () => {
+      const devices: AudioDevice[] = [];
+      // Lines look like:  'coreaudio/AppleHDA...' (Built-in Output)
+      for (const line of out.split(/\r?\n/)) {
+        const m = line.match(/^\s*'([^']*)'\s*(?:\((.*)\))?\s*$/);
+        if (m && m[1]) devices.push({ name: m[1], description: (m[2] ?? "").trim() });
+      }
+      resolve(devices);
+    });
+  });
 }
