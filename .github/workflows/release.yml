@@ -55,7 +55,16 @@ jobs:
       - run: pnpm build
 
       - name: Publish to npm
-        run: npm publish --access public
+        # Idempotent-safe: a version can't be republished, so if it's already on
+        # the registry (e.g. the tag was re-pushed or the job re-run), skip the
+        # publish cleanly instead of hard-failing — the tap bump still runs.
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if npm view "@atrivolabs/devflow@${VERSION}" version >/dev/null 2>&1; then
+            echo "@atrivolabs/devflow@${VERSION} already published; skipping publish."
+            exit 0
+          fi
+          npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
