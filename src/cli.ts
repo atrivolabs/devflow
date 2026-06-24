@@ -25,6 +25,7 @@ program
   .option("-c, --channel <channel>", "Music channel (default from config, else lofi)")
   .option("-t, --timer <minutes>", "Countdown timer in minutes")
   .option("-p, --pomodoro", "Pomodoro mode")
+  .option("--profile <name>", "Named cadence profile (e.g. deep, scatter)")
   .option("-r, --rounds <n>", "Stop after N pomodoro work blocks (default: run forever)")
   .option("--work <minutes>", "Work block duration")
   .option("--break <minutes>", "Short break duration")
