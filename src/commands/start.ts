@@ -299,11 +299,13 @@ export async function startSession(options: StartOptions): Promise<void> {
   // Only advertise keys that actually do something in this mode. Free flow has
   // no timer and no progress bar, so pause and the mascot don't apply there.
   const timed = mode !== "free";
+  const pomo = mode === "pomodoro";
   const HINTS =
     "keys: " +
     [
       ...(timed ? ["space pause"] : []),
       "n channel",
+      ...(pomo ? ["[/] rounds"] : []),
       ...(timed ? ["m mascot"] : []),
       "v voice",
       "+/- volume",
@@ -374,6 +376,20 @@ export async function startSession(options: StartOptions): Promise<void> {
     flash(`volume ${musicVolume}`);
   }
 
+  function changeRounds(delta: number): void {
+    if (!activeTimer || !pomo) return; // rounds only apply to pomodoro
+    const next = activeTimer.adjustRounds(delta);
+    // Keep the session file (and so `devflow status`) in step with the change.
+    const s = session.load();
+    if (s) session.save({ ...s, rounds: next });
+    const done = activeTimer.snapshot().pomodoroCount;
+    flash(
+      next === undefined
+        ? "rounds: unlimited"
+        : `rounds: ${next} (${done} done)`
+    );
+  }
+
   function handleKey(key: string): void {
     switch (key) {
       case " ":
@@ -381,6 +397,10 @@ export async function startSession(options: StartOptions): Promise<void> {
       case "n":
       case "N":
         return cycleChannel();
+      case "[":
+        return changeRounds(-1);
+      case "]":
+        return changeRounds(1);
       case "m":
       case "M":
         mascot = !mascot;
