@@ -79,6 +79,8 @@ export async function startSession(options: StartOptions): Promise<void> {
       );
       return;
     }
+  }
+
   // Named cadence profile (e.g. --profile deep): a one-word shorthand for a set
   // of durations (and optionally a channel). Sits between explicit flags and
   // config in the precedence chain — flags still override every profile value.

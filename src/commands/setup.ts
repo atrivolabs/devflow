@@ -199,6 +199,8 @@ async function askTime(
     if (parseHHMM(a) !== null) return a;
     console.log(chalk.red("    enter a time as HH:MM (24h), or 'off'"));
   }
+}
+
 async function askAudioDevice(
   rl: Interface,
   label: string,
