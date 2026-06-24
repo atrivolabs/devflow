@@ -105,6 +105,41 @@ export function tickLine(
   process.stdout.write(`\r\x1b[K${line}`);
 }
 
+// Enforced-break lock screen (issue #41). When `--enforce` is on, each break
+// takes over the whole alt-screen with this overlay and the soft hotkeys are
+// disabled, so you can't keep working in this pane or skip the break — only
+// Ctrl+C (stop devflow entirely) still works. Redrawn each tick with a fresh
+// full-screen clear, vertically centred. Best-effort: no-op off a TTY.
+export function lockScreen(state: TimerState, time: string): void {
+  if (!process.stdout.isTTY) return;
+  const kind = state.phase === "long-break" ? "long break" : "break";
+  const lines = [
+    chalk.whiteBright("⏸  BREAK ENFORCED — step away from the keyboard"),
+    "",
+    chalk.dim(`Input is locked until the ${kind} ends.`),
+    "",
+    chalk.bold(time) + chalk.dim("  remaining"),
+    "",
+    chalk.dim("Ctrl+C still stops devflow entirely."),
+  ];
+  const rows = process.stdout.rows || 24;
+  const top = Math.max(0, Math.floor((rows - lines.length) / 2));
+  try {
+    process.stdout.write("\x1b[2J\x1b[H" + "\n".repeat(top) + center(lines).join("\n"));
+  } catch {
+    // ignore — terminal may be gone
+  }
+}
+
+// Centre each (already-styled) line horizontally, reasoning in *visible* columns
+// so chalk's ANSI codes don't throw off the padding.
+function center(lines: string[]): string[] {
+  const cols = process.stdout.columns || 80;
+  // eslint-disable-next-line no-control-regex
+  const visible = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "").length;
+  return lines.map((l) => " ".repeat(Math.max(0, Math.floor((cols - visible(l)) / 2))) + l);
+}
+
 export function header(lines: string[]): void {
   console.log();
   console.log(chalk.bold("  devflow"));

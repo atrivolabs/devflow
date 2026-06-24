@@ -33,6 +33,9 @@ program
   .option("--voice", "Speak transitions aloud (work / break / complete)")
   .option("--mascot", "Show an animated runner alongside the progress bar")
   .option("--no-mascot", "Hide the animated runner")
+  .option("--enforce", "Lock the terminal during breaks so you actually stop")
+  .option("--hard", "Alias for --enforce")
+  .option("--hard-stop <HH:MM>", "Refuse to start a new sprint after this time of day")
   .action(startSession);
 
 program
