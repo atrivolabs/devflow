@@ -97,6 +97,7 @@ export async function setupCmd(): Promise<void> {
       warnLeadSeconds,
       musicVolume,
       cueVolume,
+      profiles: cur.profiles, // setup doesn't edit profiles — preserve any from config
     };
     saveConfig(cfg);
 

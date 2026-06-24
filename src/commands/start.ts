@@ -14,7 +14,14 @@ import { installHint } from "../lib/deps.js";
 import { ensureYtdlp } from "../lib/vendor.js";
 import { findChannel, channelList, type Channel } from "../lib/channels.js";
 import { loadChannels } from "../lib/channel-source.js";
-import { loadConfig, configExists, saveConfig } from "../lib/config.js";
+import {
+  loadConfig,
+  configExists,
+  saveConfig,
+  resolveProfile,
+  profileNames,
+  type Profile,
+} from "../lib/config.js";
 import * as session from "../lib/session.js";
 import * as history from "../lib/history.js";
 import * as ui from "../lib/display.js";
@@ -24,6 +31,7 @@ interface StartOptions {
   channel?: string;
   timer?: string;
   pomodoro?: boolean;
+  profile?: string;
   rounds?: string;
   work?: string;
   break?: string;
@@ -49,8 +57,22 @@ export async function startSession(options: StartOptions): Promise<void> {
   const cfg = loadConfig();
   if (firstRun) saveConfig(cfg);
 
+  // Named cadence profile (e.g. --profile deep): a one-word shorthand for a set
+  // of durations (and optionally a channel). Sits between explicit flags and
+  // config in the precedence chain — flags still override every profile value.
+  let profile: Profile = {};
+  if (options.profile) {
+    const resolved = resolveProfile(cfg, options.profile);
+    if (!resolved) {
+      console.log(chalk.red(`Unknown profile: ${options.profile}\n`));
+      console.log(chalk.dim("Available profiles: " + profileNames(cfg).join(", ")));
+      return;
+    }
+    profile = resolved;
+  }
+
   const allChannels = await loadChannels();
-  const channelName = options.channel ?? cfg.channel;
+  const channelName = options.channel ?? profile.channel ?? cfg.channel;
   const resolvedChannel = findChannel(allChannels, channelName);
   if (!resolvedChannel) {
     console.log(chalk.red(`Unknown channel: ${channelName}\n`));
@@ -65,10 +87,10 @@ export async function startSession(options: StartOptions): Promise<void> {
   // can preview music + transitions in about a minute.
   const demo = options.demo ?? false;
   const unitSeconds = demo ? 1 : 60;
-  const work = demo ? 10 : intOr(options.work, cfg.work);
-  const brk = demo ? 5 : intOr(options.break, cfg.break);
-  const longBrk = demo ? 8 : intOr(options.longBreak, cfg.longBreak);
-  const longBreakEvery = cfg.longBreakEvery;
+  const work = demo ? 10 : intOr(options.work, profile.work ?? cfg.work);
+  const brk = demo ? 5 : intOr(options.break, profile.break ?? cfg.break);
+  const longBrk = demo ? 8 : intOr(options.longBreak, profile.longBreak ?? cfg.longBreak);
+  const longBreakEvery = profile.longBreakEvery ?? cfg.longBreakEvery;
   const warnLeadSeconds = cfg.warnLeadSeconds;
   const countdown = options.timer ? parseInt(options.timer, 10) : undefined;
   const rounds = options.rounds
