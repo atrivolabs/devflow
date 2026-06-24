@@ -72,7 +72,7 @@ program
 
 program
   .command("feedback")
-  .description("Report a bug or send feedback (opens a pre-filled GitHub issue)")
+  .description("Report a bug or send feedback from the terminal (no browser)")
   .argument("[message...]", "Optional short summary of the issue")
   .action(feedbackCmd);
 

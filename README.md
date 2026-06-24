@@ -87,7 +87,7 @@ pnpm dev start --demo
 | `devflow stats` | Your focus history — today/week/all-time time, streak, top channel, completion rate. |
 | `devflow channels` | List the available music channels. |
 | `devflow setup` | Set your defaults (channel, durations, voice, nudges). |
-| `devflow feedback` | Report a bug or send feedback (opens a pre-filled GitHub issue). |
+| `devflow feedback` | Report a bug or send feedback from the terminal — no browser. |
 
 `pause`, `music`, and `stop` are thin clients — they find the running session and signal it; `start` does all the work.
 
@@ -142,13 +142,15 @@ Defaults live in `~/.config/devflow/config.json` — run `devflow setup` to edit
 
 ## Reporting bugs
 
-Found a problem or have a suggestion? The fastest path is from inside the CLI:
+Found a problem or have a suggestion? The fastest path is from inside the CLI — no browser needed:
 
 ```sh
 devflow feedback "music stops after the first break"
 ```
 
-This opens a **pre-filled GitHub issue** with your environment details (OS, devflow version, Node version) already filled in. You can also file one directly at **[github.com/atrivolabs/devflow/issues](https://github.com/atrivolabs/devflow/issues)**. If it's a music/playback problem, the [troubleshooting section](docs/dependencies.md#troubleshooting) often has the fix.
+You type the report in the terminal, devflow shows the anonymous context it will attach (OS, devflow version, Node version, and your current mode/channel if a session is running), and on confirmation submits it directly and prints the issue URL. Mid-session you can press **`f`** to file one without ending your timer or music. If the feedback service is unreachable, it falls back to a pre-filled GitHub issue link so you're never stuck.
+
+You can also file one directly at **[github.com/atrivolabs/devflow/issues](https://github.com/atrivolabs/devflow/issues)**. If it's a music/playback problem, the [troubleshooting section](docs/dependencies.md#troubleshooting) often has the fix.
 
 ## Links
 
