@@ -267,7 +267,8 @@ export async function startSession(options: StartOptions): Promise<void> {
     // Log the finished session to local history (powers `devflow stats`). Demo
     // runs are previews, not real focus, so they're never recorded. Skip
     // sub-minute sessions to avoid noise.
-    if (!demo && focusMinutes >= 1) {
+    const logged = !demo && focusMinutes >= 1;
+    if (logged) {
       history.record({
         timestamp: new Date().toISOString(),
         mode,
@@ -286,7 +287,7 @@ export async function startSession(options: StartOptions): Promise<void> {
     // session.
     ui.exitFullscreen();
     console.log(
-      sessionSummary(completed, focusMinutes, mode, poms, withMusic ? channel.name : null)
+      sessionSummary(completed, focusMinutes, mode, poms, withMusic ? channel.name : null, logged)
     );
     process.exit(0);
   };
@@ -607,15 +608,19 @@ function focusSecondsOf(
   return seconds;
 }
 
-// A compact one-line recap printed to the real terminal after the session
-// (and the alt screen) is torn down, so there's a trace left behind:
-//   ✓ done · 1h 15m focused · 3 pomodoros · lo-fi
+// A compact recap printed to the real terminal after the session (and the alt
+// screen) is torn down, so there's a trace left behind:
+//   ✓ session complete · 1h 15m focused · 3 pomodoros · lo-fi
+//   logged — run devflow stats to see your history
+// When the session was logged, a second line points to `devflow stats` so the
+// user knows their focus was recorded and how to review it.
 function sessionSummary(
   completed: boolean,
   focusMinutes: number,
   mode: "pomodoro" | "countdown" | "free",
   pomodoros: number,
-  channelName: string | null
+  channelName: string | null,
+  logged: boolean
 ): string {
   const parts: string[] = [];
   if (focusMinutes >= 1) parts.push(`${fmtDuration(focusMinutes)} focused`);
@@ -623,9 +628,17 @@ function sessionSummary(
     parts.push(`${pomodoros} ${pomodoros === 1 ? "pomodoro" : "pomodoros"}`);
   }
   if (channelName) parts.push(channelName);
-  const head = completed ? "✓ done" : "stopped";
+  const head = completed ? "✓ session complete" : "session stopped";
   const tail = parts.length ? "  ·  " + parts.join("  ·  ") : "";
-  return "\n  " + chalk.dim(head + tail);
+  let out = "\n  " + chalk.dim(head + tail);
+  if (logged) {
+    out +=
+      "\n  " +
+      chalk.dim("logged — run ") +
+      chalk.bold("devflow stats") +
+      chalk.dim(" to see your history");
+  }
+  return out + "\n";
 }
 
 function fmtDuration(minutes: number): string {
