@@ -436,7 +436,9 @@ export async function startSession(options: StartOptions): Promise<void> {
     timer.on("warning", (state: TimerState) => {
       cue("warn", cueVolume);
       if (voice) {
-        const phrase = leadPhrase(warnLeadSeconds);
+        // remaining == the lead that triggered this warning (standard or the
+        // longer early heads-up), so phrase off it directly.
+        const phrase = leadPhrase(state.remaining);
         speak(
           state.phase === "work"
             ? `${phrase} to go`
