@@ -25,6 +25,8 @@ export interface Config {
   warnLeadSeconds: number; // heads-up cue this many seconds before a transition; 0 = off
   musicVolume: number; // 0–100
   cueVolume: number; // 0–100, applies to transition sounds and voice
+  enforce: boolean; // lock the terminal during breaks so you actually stop
+  hardStop: string | null; // "HH:MM" daily cutoff after which `start` refuses; null = off
   profiles: Record<string, Profile>; // user-defined named cadence profiles
   audioDevice: string; // mpv audio output device name; "" = system default
 }
@@ -50,6 +52,8 @@ export const DEFAULTS: Config = {
   warnLeadSeconds: 60,
   musicVolume: 40,
   cueVolume: 100,
+  enforce: false,
+  hardStop: null,
   profiles: {},
   audioDevice: "",
 };
@@ -88,6 +92,9 @@ function sanitize(raw: unknown): Config {
   if (typeof r.audioDevice === "string") c.audioDevice = r.audioDevice.trim();
   if (typeof r.voice === "boolean") c.voice = r.voice;
   if (typeof r.mascot === "boolean") c.mascot = r.mascot;
+  if (typeof r.enforce === "boolean") c.enforce = r.enforce;
+  if (r.hardStop === null) c.hardStop = null;
+  else if (typeof r.hardStop === "string" && parseHHMM(r.hardStop) !== null) c.hardStop = r.hardStop.trim();
 
   const posInt = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 1;
   if (posInt(r.work)) c.work = r.work as number;
@@ -144,4 +151,15 @@ export function profileNames(cfg: Config): string[] {
 
 function clamp(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+// Parse a 24-hour "HH:MM" string to minutes-since-midnight, or null if it isn't
+// a valid time. Shared by config sanitize and the `--hard-stop` flag parsing.
+export function parseHHMM(value: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return h * 60 + min;
 }

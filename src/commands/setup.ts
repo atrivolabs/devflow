@@ -2,8 +2,8 @@ import chalk from "chalk";
 import { createInterface, type Interface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { channels } from "../lib/channels.js";
+import { loadConfig, saveConfig, configPath, parseHHMM, type Config } from "../lib/config.js";
 import { listAudioDevices } from "../lib/player.js";
-import { loadConfig, saveConfig, configPath, type Config } from "../lib/config.js";
 
 export async function setupCmd(): Promise<void> {
   if (!stdin.isTTY) {
@@ -86,6 +86,21 @@ export async function setupCmd(): Promise<void> {
     const musicVolume = await askInt(rl, "  music volume", cur.musicVolume, 0, 100);
     const cueVolume = await askInt(rl, "  cue/voice volume", cur.cueVolume, 0, 100);
 
+    // Enforced breaks
+    console.log(
+      "\n" +
+        chalk.cyan("  Enforce breaks") +
+        chalk.dim(" — lock the terminal during breaks so you actually stop.")
+    );
+    const enforce = await askBool(rl, "  enforce breaks", cur.enforce);
+
+    // Hard daily stop
+    console.log(
+      "\n" +
+        chalk.cyan("  Hard stop") +
+        chalk.dim(" — refuse to start a new sprint after this time. blank = off.")
+    );
+    const hardStop = await askTime(rl, "  hard stop (HH:MM)", cur.hardStop);
     // Audio output device
     console.log(
       "\n" +
@@ -106,6 +121,8 @@ export async function setupCmd(): Promise<void> {
       warnLeadSeconds,
       musicVolume,
       cueVolume,
+      enforce,
+      hardStop,
       profiles: cur.profiles, // setup doesn't edit profiles — preserve any from config
       audioDevice,
     };
@@ -169,6 +186,19 @@ async function askRounds(
   return Number.isFinite(n) && n > 0 ? n : def;
 }
 
+async function askTime(
+  rl: Interface,
+  label: string,
+  def: string | null
+): Promise<string | null> {
+  const shown = def ?? "off";
+  while (true) {
+    const a = (await rl.question(`${label} [${shown}]: `)).trim();
+    if (!a) return def;
+    if (/^(off|none|0)$/i.test(a)) return null;
+    if (parseHHMM(a) !== null) return a;
+    console.log(chalk.red("    enter a time as HH:MM (24h), or 'off'"));
+  }
 async function askAudioDevice(
   rl: Interface,
   label: string,

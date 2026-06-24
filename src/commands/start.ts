@@ -18,6 +18,7 @@ import {
   loadConfig,
   configExists,
   saveConfig,
+  parseHHMM,
   resolveProfile,
   profileNames,
   type Profile,
@@ -42,6 +43,9 @@ interface StartOptions {
   demo?: boolean;
   voice?: boolean;
   mascot?: boolean;
+  enforce?: boolean;
+  hard?: boolean;
+  hardStop?: string;
   audioDevice?: string;
 }
 
@@ -60,6 +64,21 @@ export async function startSession(options: StartOptions): Promise<void> {
   const cfg = loadConfig();
   if (firstRun) saveConfig(cfg);
 
+  // Hard daily stop (issue #41): once past the configured cutoff, refuse to
+  // start a new sprint so late-night drift just… stops. Checked here, before we
+  // take over the screen, so the refusal stays on the real terminal. An invalid
+  // --hard-stop value is ignored rather than blocking a session.
+  const hardStop = options.hardStop ?? cfg.hardStop ?? null;
+  const stopMinutes = hardStop ? parseHHMM(hardStop) : null;
+  if (stopMinutes !== null) {
+    const now = new Date();
+    if (now.getHours() * 60 + now.getMinutes() >= stopMinutes) {
+      console.log(
+        chalk.yellow(`  Hard stop ${hardStop} reached — no new sprints tonight.`) +
+          chalk.dim("\n  Rest up; start fresh tomorrow.")
+      );
+      return;
+    }
   // Named cadence profile (e.g. --profile deep): a one-word shorthand for a set
   // of durations (and optionally a channel). Sits between explicit flags and
   // config in the precedence chain — flags still override every profile value.
@@ -106,6 +125,9 @@ export async function startSession(options: StartOptions): Promise<void> {
   // Mutable so hotkeys can toggle/adjust them live during the session.
   let voice = options.voice ?? cfg.voice;
   let mascot = options.mascot ?? cfg.mascot;
+  // Enforced-break mode: --enforce / --hard, else config. Only meaningful where
+  // there are breaks (pomodoro); a no-op otherwise.
+  const enforce = options.enforce || options.hard || cfg.enforce;
   let musicVolume = cfg.musicVolume;
   const cueVolume = cfg.cueVolume;
   // Audio output device: explicit flag > config > system default ("").
@@ -137,6 +159,7 @@ export async function startSession(options: StartOptions): Promise<void> {
   const bits = [chalk.whiteBright(modeStr)];
   if (withMusic) bits.push(chalk.dim(channel.name));
   if (pomodoro && rounds) bits.push(chalk.dim(`${rounds} rounds`));
+  if (enforce && pomodoro) bits.push(chalk.dim("enforced breaks"));
   let infoLine = bits.join(chalk.dim(" · "));
   if (demo) infoLine += "   " + chalk.dim("DEMO");
   ui.header([infoLine]);
@@ -345,12 +368,19 @@ export async function startSession(options: StartOptions): Promise<void> {
   let lastState: TimerState | undefined;
   let flashText = "";
   let flashUntil = 0;
+  // True while an enforced break has the screen locked (see the `phase` handler).
+  let locked = false;
   // True while the feedback hotkey is reading a line: suspends the in-place
   // redraw so the timer tick doesn't clobber the prompt the user is typing.
   let capturing = false;
 
   function render(): void {
     if (capturing) return;
+    if (locked && lastState) {
+      const s = lastState;
+      ui.lockScreen(s, fmt(s.remaining > 0 ? s.remaining : s.total));
+      return;
+    }
     const status = Date.now() < flashUntil ? flashText : "";
     if (lastState) {
       const s = lastState;
@@ -369,6 +399,7 @@ export async function startSession(options: StartOptions): Promise<void> {
   }
 
   function togglePause(): void {
+    if (locked) return; // enforced break — can't pause/skip out of it
     if (!activeTimer) return; // free flow has no timer to pause
     activeTimer.togglePause();
     const snap = activeTimer.snapshot();
@@ -420,6 +451,9 @@ export async function startSession(options: StartOptions): Promise<void> {
   }
 
   function handleKey(key: string): void {
+    // During an enforced break every soft key is swallowed — no pause, no skip,
+    // no channel hop. Only Ctrl+C/Ctrl+D (handled before this) still works.
+    if (locked) return;
     switch (key) {
       case " ":
         return togglePause();
@@ -566,6 +600,12 @@ export async function startSession(options: StartOptions): Promise<void> {
     timer.on("phase", (state: TimerState) => {
       process.stdout.write("\n");
       if (state.phase === "work") {
+        // Break over: release the enforced lock and clear its full-screen
+        // overlay so the live countdown resumes on a clean screen.
+        if (locked) {
+          locked = false;
+          process.stdout.write("\x1b[2J\x1b[H");
+        }
         reviveMusic();
         cue("work", cueVolume);
         if (voice) speak("Back to work", cueVolume);
@@ -573,6 +613,9 @@ export async function startSession(options: StartOptions): Promise<void> {
         breaksTaken++;
         wantMusic = false;
         if (musicOk && playing()) pauseMusic();
+        // Enforced mode: take the screen and lock out the soft hotkeys for the
+        // whole break, then auto-release when work resumes (above).
+        if (enforce) locked = true;
         const kind = state.phase === "long-break" ? "long-break" : "break";
         cue(kind, cueVolume);
         if (voice) {
