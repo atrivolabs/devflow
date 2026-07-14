@@ -86,19 +86,21 @@ export class Timer extends EventEmitter {
    * Change the round target mid-session (pomodoro only). The new value is
    * floored at `pomodoroCount + 1` so you can shorten a session down to "stop
    * after the current/next work block" but never below blocks already done.
-   * Decreasing from unlimited locks in that floor; increasing from unlimited
-   * stays unlimited. Returns the new target (undefined = unlimited).
+   *
+   * From unlimited, the first adjustment in *either* direction anchors to a
+   * concrete target (blocks done, then the delta, then floored). Increasing
+   * used to be a silent no-op — "forever + 1" is still forever — which left a
+   * default session with no way to dial in a round count at all. Now the first
+   * `]` lands on the floor and subsequent presses climb from there.
+   *
+   * Returns the new target (undefined = unlimited, only when not in pomodoro).
    */
   adjustRounds(delta: number): number | undefined {
     if (this.config.mode !== "pomodoro") return this.config.rounds;
     const floor = this.state.pomodoroCount + 1;
-    if (this.config.rounds === undefined) {
-      if (delta < 0) this.config.rounds = floor; // unlimited -> concrete target
-      // increasing stays unlimited
-    } else {
-      const next = this.config.rounds + delta;
-      this.config.rounds = next < floor ? floor : next;
-    }
+    const current = this.config.rounds ?? this.state.pomodoroCount;
+    const next = current + delta;
+    this.config.rounds = next < floor ? floor : next;
     return this.config.rounds;
   }
 
