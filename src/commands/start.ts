@@ -27,7 +27,7 @@ import * as session from "../lib/session.js";
 import * as history from "../lib/history.js";
 import * as ui from "../lib/display.js";
 import { startHeartbeat, stopHeartbeat } from "../lib/listener.js";
-import { buildContext, submitFeedback } from "../lib/feedback.js";
+import { buildContext, submitFeedback, buildIssueUrl, tryOpen } from "../lib/feedback.js";
 import { createInterface } from "node:readline";
 
 interface StartOptions {
@@ -504,12 +504,26 @@ export async function startSession(options: StartOptions): Promise<void> {
         flash("feedback cancelled");
         return;
       }
-      const result = await submitFeedback(msg, buildContext());
-      flash(
-        result.ok
-          ? "✓ feedback sent"
-          : "couldn't send — try `devflow feedback`"
-      );
+      const context = buildContext();
+      const result = await submitFeedback(msg, context);
+      if (result.ok) {
+        flash("✓ feedback sent");
+      } else {
+        // Endpoint unreachable — never dead-end. Fall back to a pre-filled
+        // GitHub issue URL (same as `devflow feedback`); print it before raw
+        // mode is restored so it stays in scrollback, and try to open it.
+        const url = buildIssueUrl(msg, context);
+        process.stdout.write(
+          chalk.yellow("  Couldn't reach the feedback service.") +
+            "\n" +
+            chalk.dim("  File it on GitHub instead (pre-filled):") +
+            "\n  " +
+            chalk.cyan(url) +
+            "\n"
+        );
+        tryOpen(url);
+        flash("opened GitHub issue instead");
+      }
     } catch {
       // never let feedback break the session
     } finally {
